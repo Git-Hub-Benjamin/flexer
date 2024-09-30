@@ -1,26 +1,28 @@
 section .data
-    TOK_TOTAL db 86
-    TOK_HASH db 79
-    TOK_DEFINE db 0 ; add to tokenTypes
-    TOK_IDENTIFER db 83
-    TOK_LITERAL db 84
-    TOK_IMMEDIATE db 85
-    TOK_SKIP db 87
-    DEFINE_STR db 'define', 0
-    DEFINE_STR_LEN equ $ - DEFINE_STR
     noMemoryStr db 'No memory...', 0
+
+TOK_DEFINE equ 33
+TOK_INCLUDE equ 34
+TOK_HASH equ 84
+TOK_IDENTIFER equ 86
+TOK_LITERAL equ 87
+TOK_IMMEDIATE equ 88
+TOK_TOTAL equ 89
+TOK_SKIP  equ 90
 
 section .bss
     preProcessHt resq 1 
-    SrcTokenStreamTokens resq 1
-    SrcTokenStreamAttrTokens resq 1
+    SrcTokenStreamTokens resq 1 ; pointer of tokens[?]
     currPreProcessToken resq 1 ; points to the curr #define ID IMM / LITERAL <- (the imm / literal token) 
     
 
 section .text
-    global preProcess
+    global hashPreprocessorDirectives
+    global preProcessHt ; so expander can access
+    global SrcTokenStreamTokens ; why not
+
     extern malloc ; amount of bytes
-    extern printf
+    extern printf ; print error
     extern ht_set ; pointer to hash table, pointer to char, pointer to val
     extern ht_get ; pointer to hash table, pointer to string
     extern ht_create ; default entries to initalize with -1 will set a defautl value
@@ -29,33 +31,24 @@ section .text
 
     ; TokenStream
     ; 0-7   - Tokens
-    ; 8-15  - basicTokenCapacity
-    ; 16-23 - basicTokenIndex
-    ; 24-31 - attrTokens
-    ; 32-39 - attrTokenCapacity
-    ; 40-47 - attrTokenIndex
+    ; 8-15  - tokenCapacity
+    ; 16-23 - tokenIndex
 
     ; Token
-    ; 0-3   - line
-    ; 4-7   - col
-    ; 8-11  - TokenType
-    ; 12-15 - tokenNum
-
-    ; AttrToken
     ; 0-7   - data
     ; 8-11  - TokenType
-    ; 12-15 - tokenNum
+    ; 12-15 - line
+    ; 16-19 - col
 
-preProcess:
+
+hashPreprocessorDirectives:
     push rbp
     mov rbp, rsp
 
     push rbx ; callee saved register
 
-    mov rbx, SrcTokenStream
-    mov qword [SrcTokenStreamTokens], SrcTokenStream ; same address
-    add rbx, 24 ; SrcTokenStream.attrTokens
-    mov [SrcTokenStreamAttrTokens], rbx
+    mov rbx, [SrcTokenStream] ; get SrcTokenStream.tokens
+    mov qword [SrcTokenStreamTokens], SrcTokenStream 
 
     ; iterate over tokens, find a # with an define keyword following it , store the id and val following the #define into the preProcess hash table
     mov rdi, -1 ; default size for intial value
@@ -79,45 +72,55 @@ null_check_1:
     ; Tokens[rcx].TokenType != TOK_TOTAL
 
 token_while_loop:
-    mov rax, rcx ; get index 
-    shl rax, 4 ; correct the size to 16
-    add rax, SrcTokenStream ; get curr token
-    add rax, 8 ; get tokentype
-    mov rdi, rax ; save address (currently pointing to Tokens[rcx].TokenType)
-    mov rax, [rax] ; mov the actual val at tokentype address into rax
-    cmp [TOK_TOTAL], rax ; cmp TOT_TOTAL to current token.tokentype
+
+    mov rdi, rcx ; get index 
+    shl rdi, 4 ; correct the size to 16
+    add rdi, [SrcTokenStreamTokens] ; get Tokens pointer
+    add rdi, 8 ; get tokentype
+    mov rax, [rdi] ; move actual val into rax
+    cmp rax, TOK_TOTAL ; cmp TOT_TOTAL to current token.tokentype 
     je token_while_loop_end ; break;
 
-    cmp [TOK_HASH], rax ; see if hash
+    cmp rax, TOK_HASH ; see if hash
     jne token_while_loop_next_iter ; continue 
 
     add rdi, 16 ; get next index
     mov rax, [rdi] ; mov next index token type into rax
-    cmp [TOK_DEFINE], rax ; see if token define
-    jne token_while_loop_next_iter ; / or handle inncorrect usage of #
+    cmp rax, TOK_DEFINE ; see if token define
+    je include_define
+    cmp rax, TOK_INCLUDE ; see if token include
+    je include_define
 
+    ; inncorrect usage of #
+    mov rax, 0 ; fail
+    jmp exit_func
+
+include_define:
     add rdi, 16 ; get next index
     mov rax, [rdi] ; mov next index token type into rax
-    cmp [TOK_IDENTIFER], rax ; see if next token is identifer
-    jne token_while_loop_next_iter ; / or handle inncorrect usage of #define
-
+    cmp rax, TOK_IDENTIFER ; see if next token is identifer
+    je include_define_identifer 
+    ; inncorrect usage of #define / #include 
+    mov rax, 0 ; fail
+    jmp exit_func
+include_define_identifer:
     add rdi, 16 ; get next index
     mov rax, [rdi] ; mov next index token type into rax
-    cmp [TOK_IMMEDIATE], rax ; see if next token is immediate
+    cmp rax, TOK_IMMEDIATE ; see if next token is immediate
     je immediate_or_literal
-    cmp [TOK_LITERAL], rax ; see if token is literal
+    cmp rax, TOK_LITERAL ; see if token is literal
     je immediate_or_literal
-    jmp token_while_loop_next_iter
+    ; inncorrect usage of #define / #include identifer 
+    mov rax, 0 ; fail
+    jmp exit_func
 immediate_or_literal:
     ; found valid #define IDENTIFER IMM or #define IDENTIFER LITERAL
     ; store in table then set all these tokens to TOK_SKIP
 
-    sub rdi, 12 ; setup pointer
-    mov [currPreProcessToken], rdi
-    add rdi, 12 ; restore index
+    sub rdi, 8 ; setup pointer
+    mov [currPreProcessToken], rdi ; store address in here
 
     push rcx ; save rcx (caller saved register)
-    push rdi ; save rdi (address of Tokens[?].TokenType) <-- right now the token of IMM / LITERAL
 
     mov rdi, 4 ; allocate 4 bytes 
     call malloc
@@ -128,7 +131,6 @@ immediate_or_literal:
     mov rdi, noMemoryStr
     call printf
     mov rax, 0 ; error val
-    pop rdi
     pop rcx
     pop rbx
     pop rbp
@@ -136,35 +138,25 @@ immediate_or_literal:
 
 null_check_2:
 
-    pop rdi ; curr token count Tokens[?].TokenType
-    add rdi, 4 ; move to index of imm / literal in Tokens[?].index
-    push rdi ; save again
-    mov rdi, [rdi] ; get the acutal index here
-    mov rbx, SrcTokenStream 
-    add rbx, 24 ; get SrcTokenStream.attrTokens
-    shl rdi, 4 ; mutiple the index * sizeof(attrToken)
-    add rdi, rbx ; SrcTokenStream.attrTokens[?].data
-    mov [rax], rdi ; mov the curr token index into malloced memory
-    mov rcx, rax ; move into 3rd arg for ht_set
+    mov rdi, [currPreProcessToken] ; restore this address
 
-    pop rdi
-    sub rdi, 16 ; go back to identifer <-- now of IDENTIFER but index of Identifer
-    mov rdi, [rdi] ; get actual index
-    mov rbx, SrcTokenStream
-    add rbx, 24 ; get SrcTokenStream.attrTokens
-    shl rdi, 4 ; mutiple the index * sizeof(attrToken)
-    add rdi, rbx ; SrcTokenStream.attrTokens[?].data
-    mov rsi, rdi ; move into 2nd arg for ht_set
+    ; 3rd arg void* val
+    mov rcx, rdi
 
-    mov rdi, preProcessHt ; pointer to ht 1st arg for ht_set 
+    ; 2nd arg char* key
+    sub rdi, 16
+    mov rsi, rdi
+
+    ; 1st arg ht_table
+    mov rdi, [preProcessHt] ; pointer to ht 1st arg for ht_set 
 
     call ht_set ; set this #define IDENTIFER LITERAL into hash table
 
     ; set #, define, id, val -> all to tokenType = TOK_SKIP
-    xor rcx, rcx ; 0 out
-    mov rdx, currPreProcessToken ; get address of this back
+    xor rcx, rcx ; 0 out (we saved rcx above)
+    mov rdx, [currPreProcessToken] ; get address of this back
     add rdx, 12 ; get to tokenType part
-    mov rax, [TOK_SKIP] ; thing to fill
+    mov rax, TOK_SKIP ; thing to fill
 set_token_skip:
     cmp rcx, 3 ; amount to do (0 , 1 , 2 , 3 (4 times))
     je set_token_skip_out
@@ -179,8 +171,11 @@ set_token_skip_out:
 token_while_loop_next_iter:
     inc rcx ; increment to next index
     jmp token_while_loop
-token_while_loop_end:
 
+token_while_loop_end:
+    mov rax, 1 ; All went good
+
+exit_func: ; only should be jmped to if stack is cleaned up and return code is set
     pop rbx ; callee saved
     pop rbp
     ret

@@ -38,6 +38,11 @@ typedef enum {
     TOK_VOID,
     TOK_VOLATILE,
     TOK_WHILE,
+    TOK_DEFINE,
+    TOK_INCLUDE,
+    TOK_IFDEF,
+    TOK_ELIF,
+    TOK_ENDIF,
 
     __TOK__DIVIDER__OPERATORS__,
 
@@ -91,8 +96,6 @@ typedef enum {
     TOK_ARROW,
     TOK_COLON,
     TOK_HASH,
-    TOK_INCLUDE,
-    TOK_DEFINE,
 
     // Additional common tokens
     TOK_MAIN,
@@ -105,113 +108,19 @@ typedef enum {
     TOK_SKIP,
 } TokenType;
 
-/*
-
-enum tokenType {
-    // Unary Operators
-    INC,    // increment 1
-    DEC,    // decrement 1
-    NEG,    // negation
-
-    // Multiplication, Division, Modulus
-    MUL,    // multiplication *
-    DIV,    // division /
-    MOD,    // modulus %
-
-    // Addition, Subtraction
-    ADD,    // addition +
-    SUB,    // subtraction -
-
-    // Bitwise Shift
-    LSH,    // left shift <<
-    RSH,    // right shift >>
-
-    // Relational Operators
-    LTHEN,  // less than <
-    LTHENEQ,// less than or equal to <=
-    GTHEN,  // greater than >
-    GTHENEQ,// greater than or equal to >=
-
-    // Equality Operators
-    EQUAL,  // equal to ==
-    NOTEQUAL,// not equal to !=
-
-    // Bitwise AND
-    BAND,   // bitwise AND &
-
-    // Bitwise XOR
-    XOR,    // bitwise XOR ^
-
-    // Bitwise OR
-    BOR,    // bitwise OR |
-
-    // Logical AND
-    LAND,   // logical AND &&
-
-    // Logical OR
-    LOR,    // logical OR ||
-
-    // Assignment Operators
-    ASSIGN, // assignment =
-    ADDEQ,  // addition assignment +=
-    SUBEQ,  // subtraction assignment -=
-    MULEQ,  // multiplication assignment *=
-    DIVEQ,  // division assignment /=
-    MODEQ,  // modulus assignment %=
-    LSHEQ,  // left shift assignment <<= 
-    RSHEQ,  // right shift assignment >>=
-    XOREQ,  // bitwise XOR assignment ^=
-    BOREQ,  // bitwise OR assignment |=
-    BANDEQ, // bitwise AND assignment &=
-    
-    // Other Tokens
-    COMMA,  // comma ,
-    COLON,  // colon :
-    SEMI,   // semicolon ;
-    BCOMP,  // bitwise complement ~
-    LCURLY, // left curly brace {
-    RCURLY, // right curly brace }
-    LBRAC,  // left square bracket [
-    RBRAC,  // right square bracket ]
-    LPARA,  // left parenthesis (
-    RPARA,  // right parenthesis )
-    IMM,    // immediate value (not an operator but a token)
-    IDENTIFER, // identifier (not an operator but a token)
-    LITERAL  // literal value (not an operator but a token)
-};
-
-*/
-
 typedef struct {
+    char* data; // for imm, id, literal
+    TokenType type;
     int line;
     int col;
-    TokenType token;
-    union {
-        int self_basic_token_num; // just for readability (if this token has no attribute then the token number will be itself)
-        int other_attr_token_num; // if it has an attribute, the token num here will be the attribute token num and will be stored here
-    } token_num;
 } Token;
-
-typedef struct {
-    void* data;
-    int other_basic_token_num;
-    TokenType token;
-} AttrToken ;
-
-typedef struct  {
-    char* data;
-    int len;
-} StringToken;
 
 #define TOKEN_STREAM_INITAL_CAPACITY 512
 
 typedef struct {
     Token* Tokens;
-    size_t basicTokenCapacity;
-    size_t basicTokenIndex;
-    AttrToken* AttrTokens;
-    size_t attrTokenCapacity;
-    size_t attrTokenIndex;
+    size_t tokenCapacity;
+    size_t tokenIndex;
 } TokenStream;
 
 

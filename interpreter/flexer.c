@@ -14,116 +14,149 @@ const char* TokenStrings[] = {
     "double", "else", "enum", "extern", "float", "for", "goto", "if",
     "inline", "int", "long", "register", "return", "short", "signed", "sizeof",
     "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while",
-    
-    "_TOK_DIVIDER_",
+    "define", "include", "ifdef", "elif", "endif",
+
+    "_TOK_DIVIDER_", // 39
 
     // Operators
     "+", "-", "*", "/", "%", "++", "--", "==", "!=", ">", "<", ">=", "<=",
     "&&", "||", "!", "&", "|", "^", "~", "<<", ">>", "=", "+=", "-=", "*=",
     "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
 
-    "_TOK_DIVIDER_",
-    
+    "_TOK_DIVIDER_", // 73
+
     // Punctuation
-    "{", "}", "[", "]", "(", ")", ";", ",", ".", "->", ":", "#", "#include", "#define",
-    
+    "{", "}", "[", "]", "(", ")", ";", ",", ".", "->", ":", "#",
+
     // Additional common tokens
-    "main"
-}; // 63
+    "main" //86
+}; 
+void EXIT_FAIL_MSG(const char* msg) {
+    printf("%s\n", msg);
+    exit(EXIT_FAILURE);
+}
 
 ht* keywordTokenConverter;
 TokenStream SrcTokenStream; // Source file token stream
 static Token* tokens; // tmp pointer to the same address as (SrcTokenStream.tokens)
-static AttrToken* attr_tokens; // tmp pointer to the same address as (SrcTokenStream.AttrTokens)
-
-// make new stream 2 times the size of the last, copy data and free old memory 
-static bool ts_expand(void* stream, size_t* capacity) {
-    size_t new_capacity = *capacity * 2;
-    if (new_capacity < *capacity)
-        return false; // overflow
-    
-    // 0 out new memory
-    void* new_stream = calloc(new_capacity, (stream == SrcTokenStream.Tokens) ? sizeof(Token) : sizeof(AttrToken));
-    if (new_stream == NULL)
-        return false;
-    
-    // copy old data to new pointer
-    memcpy(stream, new_stream,(stream == SrcTokenStream.Tokens) ? sizeof(Token) : sizeof(AttrToken));
-
-    // update tmp pointer for lexer to new pointer
-    if (stream == SrcTokenStream.Tokens)
-        tokens = SrcTokenStream.Tokens;
-    else
-        attr_tokens = SrcTokenStream.AttrTokens;
-
-    free(stream);
-    *capacity = new_capacity;
-    return true; // successful
-}
 
 // see if we need to expand the stream
 enum ts_type {BASIC, ATTR};
 static void ts_new_index(enum ts_type type) {
-    if (type == BASIC) {
-        if(SrcTokenStream.basicTokenIndex >= SrcTokenStream.basicTokenCapacity && !ts_expand(tokens, &SrcTokenStream.basicTokenCapacity))
-            exit(EXIT_FAILURE);
-        SrcTokenStream.basicTokenIndex++;
-    } else if (type == ATTR) {
-        if(SrcTokenStream.attrTokenIndex >= SrcTokenStream.attrTokenCapacity && !ts_expand(attr_tokens, &SrcTokenStream.attrTokenCapacity))
-            exit(EXIT_FAILURE);
-        SrcTokenStream.attrTokenIndex++;
-    }    
+    if(SrcTokenStream.tokenIndex >= SrcTokenStream.tokenCapacity) {
+        size_t new_capacity = SrcTokenStream.tokenCapacity * 2;
+
+        if (new_capacity < SrcTokenStream.tokenCapacity) 
+            EXIT_FAIL_MSG("OVERFLOW...");
+        // 0 out new memory
+        void* new_stream = calloc(new_capacity, sizeof(Token));
+        if (new_stream == NULL)
+            EXIT_FAIL_MSG("NO MEMORY...");
+
+        // copy old data to new pointer
+        memcpy(new_stream, tokens, sizeof(Token) * (SrcTokenStream.tokenIndex + 1));
+
+        // free old stream & update SrcTokenStream pointer & update capacity
+        SrcTokenStream.tokenCapacity = new_capacity;
+        SrcTokenStream.Tokens = new_stream;
+        free(tokens);
+
+        // update tmp pointer for lexer to new pointer
+        tokens = SrcTokenStream.Tokens;
+    }
+    SrcTokenStream.tokenIndex++;
 }
 
-static char* keywordIdToken(char* line_ptr) {
 
+typedef struct {
+    const char* start;
+    const char* current;
+    int line;
+} Scanner;
+
+Scanner scanner;
+
+static bool isAtEnd() {
+    return *scanner.current == '\0';
+}
+
+static char peek() {
+    return *scanner.current;
+}
+
+static char peekNext() {
+    if (isAtEnd()) return '\0';
+    return scanner.current[1]; // 1 ahead of current
+}
+
+static char peekSuperNext() {
+    if (scanner.current[1] == '\0') return '\0';
+    return scanner.current[2]; // 2 ahead of current
+}
+
+static char advance() {
+    scanner.current++;
+    return scanner.current[-1]; // 1 behind increment
+}
+
+static char retreat() {
+    scanner.current--;
+    return scanner.current[1];
+}
+
+static void skipWhitespace(int* col) {
+    for (;;) {
+        char c = peek();
+        switch (c) {
+            case ' ':
+            case '\r':
+            case '\t':
+                (*col)++; // maybe different for \t?
+                advance();
+                break;
+            default:
+                scanner.start = scanner.current;
+                return;
+        }
+    }
+}
+
+static void keywordIdToken() {
     // get pointer to end of string
-    char* tmp = line_ptr;
     do {
-        line_ptr++; 
-    } while ((*line_ptr >= 'A' && *line_ptr <= 'Z') || (*line_ptr >= 'a' && *line_ptr <= 'z') || *line_ptr == '_');
+        advance(); 
+    } while ((peek() >= 'A' && peek() <= 'Z') || (peek() >= 'a' && peek() <= 'z') || peek() == '_');
 
     // save the char here
-    char saved = *line_ptr;
+    char saved = peek();
     // null terminate temporarily
-    *line_ptr = '\0';
+    *(char*)scanner.current = '\0'; // lmao - override the const for a second
 
     // search for keyword
-    void* tokdata = ht_get(keywordTokenConverter, tmp);
+    void* tokdata = ht_get(keywordTokenConverter, scanner.start);
     if (tokdata != NULL) { // found keyword 
-        tokens[SrcTokenStream.basicTokenIndex].token = *(TokenType*)tokdata;
+        tokens[SrcTokenStream.tokenIndex].type = *(TokenType*)tokdata;
     } else { // copy the identifer into attr token
-        tokens[SrcTokenStream.basicTokenIndex].token = TOK_IDENTIFER; // set basic token
-        attr_tokens[SrcTokenStream.attrTokenIndex].data = malloc(sizeof(StringToken)); // malloc memory
-        if (attr_tokens[SrcTokenStream.attrTokenIndex].data == NULL) {
-            printf("No memory...\n");
-            exit(EXIT_FAILURE);
-        }
-        (*(StringToken*)(attr_tokens[SrcTokenStream.attrTokenIndex].data)).data = (char*)malloc(line_ptr - tmp + 1); // malloc size of string
-        if ((*(StringToken*)(attr_tokens[SrcTokenStream.attrTokenIndex].data)).data == NULL) {
-            printf("No memory...\n");
-            exit(EXIT_FAILURE);
-        }
-        strcpy((*(StringToken*)(attr_tokens[SrcTokenStream.attrTokenIndex].data)).data, tmp); // copy 
-        (*(StringToken*)(attr_tokens[SrcTokenStream.attrTokenIndex].data)).len = line_ptr - tmp; // set length
-        attr_tokens[SrcTokenStream.attrTokenIndex].token = TOK_IDENTIFER; // set attr token too
+        tokens[SrcTokenStream.tokenIndex].type = TOK_IDENTIFER; // set basic token
+        tokens[SrcTokenStream.tokenIndex].data = (char*)malloc(scanner.current - scanner.start + 1); // malloc size of string
+        if (tokens[SrcTokenStream.tokenIndex].data == NULL)
+            EXIT_FAIL_MSG("NO MEMORY...");
+        strcpy(tokens[SrcTokenStream.tokenIndex].data, scanner.start); // copy 
     }
 
     // restore saved char
-    *line_ptr = saved;
-
-    // return new pointer position
-    return line_ptr;
+    *(char*)scanner.current = saved;
 }
 
 
 // does not support (FLOATS, DOUBLE)
-char* immToken(char* line_ptr) {
+void immToken() {
     enum immType {HEX, BIN, OCT, DEC} type;
-    if (*line_ptr == '0')
-        if (*(line_ptr+1) == 'x' || *(line_ptr+1) == 'X')
+
+    if (peek() == '0')
+        if (peekNext() == 'x' || peekNext() == 'X')
             type = HEX;
-        else if (*(line_ptr+1) == 'b' || *(line_ptr+1) == 'B')
+        else if (peekNext() == 'b' || peekNext() == 'B')
             type = BIN;
         else
             type = OCT;
@@ -132,60 +165,55 @@ char* immToken(char* line_ptr) {
     switch(type){
         case HEX:
         case BIN:
-            line_ptr++;
+            advance();
         case OCT:
-            line_ptr++;
+            advance();
         default:
             break;
     }
 
     // get pointer to end of immediate value
-    char* beggining = line_ptr;
     if (type == BIN || type == DEC) // BINARY & DECIAML
-        while(*line_ptr >= '0' && *line_ptr <= '9') line_ptr++;
+        while(peek() >= '0' && peek() <= '9') advance();
     else if (type == HEX) // HEX
-        while((*line_ptr >= '0' && *line_ptr <= '9') || (*line_ptr >= 'A' && *line_ptr <= 'F') || (*line_ptr >= 'a' && *line_ptr <= 'f')) line_ptr++;
+        while((peek() >= '0' && peek() <= '9') || (peek() >= 'A' && peek() <= 'F') || (peek() >= 'a' && peek() <= 'f')) advance();
     else if(type == BIN)
-        while(*line_ptr >= '0' && *line_ptr <= '1') line_ptr++;
+        while(peek() >= '0' && peek() <= '1') advance();
     else // OCTAL
-        while(*line_ptr >= '0' && *line_ptr <= '7') line_ptr++;
+        while(peek() >= '0' && peek() <= '7') advance();
 
-    line_ptr--; // move to the last digit
+    retreat(); // move to the last digit
 
     uint32_t num = 0;
     int digit_count = 0;
 
     // line_ptr pointing char in num, we are going from back to front
-    while(line_ptr >= beggining) {
+    while(scanner.current >= scanner.start) {
         if (type == DEC)
-            num += (*line_ptr - '0') * (uint32_t)pow(10, digit_count);
+            num += (peek() - '0') * (uint32_t)pow(10, digit_count);
         else if(type == HEX)
-            if (*line_ptr >= 'A' && *line_ptr <= 'F')
-                num += (*line_ptr - 55) * (uint32_t)pow(16, digit_count);
-            else if (*line_ptr >= 'a' && *line_ptr <= 'f')
-                num += (*line_ptr - 87) * (uint32_t)pow(16, digit_count);
+            if (peek() >= 'A' && peek() <= 'F')
+                num += (peek() - 55) * (uint32_t)pow(16, digit_count);
+            else if (peek() >= 'a' && peek() <= 'f')
+                num += (peek() - 87) * (uint32_t)pow(16, digit_count);
             else
-                num += (*line_ptr - 48) * (uint32_t)pow(16, digit_count);
+                num += (peek() - 48) * (uint32_t)pow(16, digit_count);
         else if(type == BIN) {
-            if (*line_ptr == '1')
+            if (peek() == '1')
                 num += (uint32_t)pow(2, digit_count);
         } else 
-            num += (*line_ptr - 48) * (uint32_t)pow(8, digit_count);
+            num += (peek() - 48) * (uint32_t)pow(8, digit_count);
         digit_count++;
-        line_ptr--;
+        retreat();
     }
 
     // get position to after last digit
-    line_ptr += digit_count + 1; 
+    scanner.current += digit_count + 1; 
 
-    // store the result in a table that is associated witht he imm token (token count that is stored)
-    tokens[SrcTokenStream.basicTokenIndex].token = TOK_IMMEDIATE;
-    attr_tokens[SrcTokenStream.attrTokenIndex].token = TOK_IMMEDIATE;
-    attr_tokens[SrcTokenStream.attrTokenIndex].data = malloc(sizeof(int));
-    *(int*)(attr_tokens[SrcTokenStream.attrTokenIndex].data) = (int)num;
-
-    // return new pos
-    return line_ptr; 
+    // store the result
+    tokens[SrcTokenStream.tokenIndex].type = TOK_IMMEDIATE;
+    tokens[SrcTokenStream.tokenIndex].data = malloc(sizeof(int));
+    *(int*)(tokens[SrcTokenStream.tokenIndex].data) = (int)num;
 }
 
 // enum token_errors {
@@ -198,249 +226,236 @@ char* immToken(char* line_ptr) {
 char* literalToken(char* line_ptr) {
     return NULL;
 #ifdef A
-    if (*((*line_ptr)+1) == '"')
+    if (*((peek())+1) == '"')
         return no_empty_string_literals;
     int len = 0;
-    *line_ptr++;
-    char* tmp = *line_ptr;
-    while (**line_ptr != '"') {
-        if (**line_ptr == '\0') // check for null in case user never closes quotes
+    peek()++;
+    char* tmp = peek();
+    while (*peek() != '"') {
+        if (*peek() == '\0') // check for null in case user never closes quotes
             return no_never_ending_string_literals;                    
-        else if (**line_ptr == '\n') 
+        else if (*peek() == '\n') 
             return no_multline_string_literals;
         len++;
-        (*line_ptr)++;
+        (peek())++;
     } 
     attr_tokens[SrcTokenStream.attrTokenIndex].data = (struct string_token*)malloc(sizeof(StringToken));
     StringToken* temp = (StringToken*)attr_tokens[SrcTokenStream.attrTokenIndex].data;
     temp->len = len;
     temp->data = malloc(len + 1); // + 1 for null char
     memcpy(tmp, temp->data, len);
-    attr_tokens[SrcTokenStream.attrTokenIndex].token = TOK_LITERAL;
-    tokens[SrcTokenStream.basicTokenIndex].token = TOK_LITERAL;
+    attr_tokens[SrcTokenStream.attrTokenIndex].type = TOK_LITERAL;
+    tokens[SrcTokenStream.tokenIndex].type = TOK_LITERAL;
     (*(StringToken*)attr_tokens[SrcTokenStream.attrTokenIndex].data).data[len] = '\0'; // null terminating
-    (*line_ptr)++; // get off ending quote
+    (peek())++; // get off ending quote
 #endif
 }
 
-int tokenize(FILE* file) {
-    int line_number = 0;
-    int column = 0;
-    char line_buffer[256];
-    while (fgets(line_buffer, sizeof(line_buffer), file) != NULL) { // get line
-        char* line_ptr = line_buffer; 
-        while (*line_ptr != '\0') { // iterate over line
-            if (*line_ptr == '\n')
+int tokenize(const char* source) {
+    // initalize scanner
+    scanner.line = 1;
+    scanner.start = source;
+    scanner.current = source;
+    int column = 1;
+    const char* begginingLineTracker = source;
+
+    while (!isAtEnd()) {
+
+        skipWhitespace(&column); // skip whitespace
+
+        if (peek() == '\n') { // check for new line
+            column = 1;
+            scanner.line++;
+            advance();
+            scanner.start = scanner.current;
+            begginingLineTracker = scanner.current;
+            continue;
+        }
+
+        switch (peek()) {
+            case '#':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_HASH; break;
+            case '(':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_LPAREN; break;
+            case ')':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_RPAREN; break;
+            case '[':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_LBRACKET; break;
+            case ']':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_RBRACKET; break;
+            case '{':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_LBRACE; break;
+            case '}':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_RBRACE; break;
+            case ',':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_COMMA; break;
+            case ':':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_COLON; break;
+            case ';':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_SEMICOLON; break;
+            case '~':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_TILDE; break;
+            case '*':
+                if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_STAR_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_STAR;
                 break;
-            switch (*line_ptr) {
-                case ' ':
-                    goto next_character;
-                case '#':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_HASH; break;
-                case '(':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_LPAREN; break;
-                case ')':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_RPAREN; break;
-                case '[':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_LBRACKET; break;
-                case ']':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_RBRACKET; break;
-                case '{':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_LBRACE; break;
-                case '}':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_RBRACE; break;
-                case ',':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_COMMA; break;
-                case ':':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_COLON; break;
-                case ';':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_SEMICOLON; break;
-                case '~':
-                    tokens[SrcTokenStream.basicTokenIndex].token = TOK_TILDE; break;
-                case '*':
-                    if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_STAR_EQUAL;
+            case '/':
+                if (peekNext() == '/')
+                    break; // Comment, end of line
+                else if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_SLASH_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_SLASH;
+                break;
+            case '+':
+                if (peekNext() == '+')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_PLUSPLUS;
+                else if (peekNext() == '=') 
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_PLUS_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_PLUS;
+                break;
+            case '-':
+                if (peekNext() == '-')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_MINUSMINUS;
+                else if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_MINUS_EQUAL;
+                else
+                    if (peekNext() >= '0' && peekNext() <= '9') {
+                        advance(); // advance pass negative sign
+                        immToken(); // get number
+                        *((int*)tokens[SrcTokenStream.tokenIndex].data) = *((int*)tokens[SrcTokenStream.tokenIndex].data) * -1; // make negative
+                    } else
+                        tokens[SrcTokenStream.tokenIndex].type = TOK_MINUS;
+                break;
+            case '=':
+                if (peekNext() == '=') 
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_EQUAL_EQUAL;
+                else 
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_EQUAL;
+                break;
+            case '&':
+                if (peekNext() == '&')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_AND_AND;
+                else if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_AMPERSAND_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_AMPERSAND;
+                break;
+            case '|':
+                if (peekNext() == '|')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_OR_OR;
+                else if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_PIPE_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_PIPE;
+                break;
+            case '^':
+                if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_CARET_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_CARET;
+                break;
+            case '%':
+                if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_PERCENT_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_PERCENT;
+                break;
+            case '>':
+                if (peekNext() == '>')
+                    if (peekSuperNext() == '=')
+                        tokens[SrcTokenStream.tokenIndex].type = TOK_RSHIFT_EQUAL;
                     else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_STAR;
-                    break;
-                case '/':
-                    if (*(line_ptr + 1) == '/')
-                        break; // Comment, end of line
-                    else if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_SLASH_EQUAL;
+                        tokens[SrcTokenStream.tokenIndex].type = TOK_RSHIFT;
+                else if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_GREATER_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_GREATER;
+                break;
+            case '<':
+                if (peekNext() == '<')
+                    if (peekSuperNext() == '=')
+                        tokens[SrcTokenStream.tokenIndex].type = TOK_LSHIFT_EQUAL;
                     else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_SLASH;
-                    break;
-                case '+':
-                    if (*(line_ptr + 1) == '+')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_PLUSPLUS;
-                    else if (*(line_ptr + 1) == '=') 
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_PLUS_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_PLUS;
-                    break;
-                case '-':
-                    if (*(line_ptr + 1) == '-')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_MINUSMINUS;
-                    else if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_MINUS_EQUAL;
-                    else
-                        if (*(line_ptr + 1) >= '0' && *(line_ptr + 1) <= '9') {
-                            line_ptr++; // advance pass negative sign
-                            line_ptr = immToken(line_ptr); // get number
-                            *((int*)attr_tokens[SrcTokenStream.attrTokenIndex].data) = *((int*)attr_tokens[SrcTokenStream.attrTokenIndex].data) * -1; // make negative
-                        } else
-                            tokens[SrcTokenStream.basicTokenIndex].token = TOK_MINUS;
-                    break;
-                case '=':
-                    if (*(line_ptr + 1) == '=') {
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_EQUAL_EQUAL;
-                        line_ptr++;
-                    } else {
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_EQUAL;
-                    }
-                    break;
-                case '&':
-                    if (*(line_ptr + 1) == '&')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_AND_AND;
-                    else if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_AMPERSAND_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_AMPERSAND;
-                    break;
-                case '|':
-                    if (*(line_ptr + 1) == '|')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_OR_OR;
-                    else if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_PIPE_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_PIPE;
-                    break;
-                case '^':
-                    if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_CARET_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_CARET;
-                    break;
-                case '%':
-                    if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_PERCENT_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_PERCENT;
-                    break;
-                case '>':
-                    if (*(line_ptr + 1) == '>')
-                        if (*(line_ptr + 2) == '=')
-                            tokens[SrcTokenStream.basicTokenIndex].token = TOK_RSHIFT_EQUAL;
-                        else
-                            tokens[SrcTokenStream.basicTokenIndex].token = TOK_RSHIFT;
-                    else if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_GREATER_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_GREATER;
-                    break;
-                case '<':
-                    if (*(line_ptr + 1) == '<')
-                        if (*(line_ptr + 2) == '=')
-                            tokens[SrcTokenStream.basicTokenIndex].token = TOK_LSHIFT_EQUAL;
-                        else
-                            tokens[SrcTokenStream.basicTokenIndex].token = TOK_LSHIFT;
-                    else if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_LESS_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_LESS;
-                    break;
-                case '!':
-                    if (*(line_ptr + 1) == '=')
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_BANG_EQUAL;
-                    else
-                        tokens[SrcTokenStream.basicTokenIndex].token = TOK_BANG;
-                    break;
-                default:
-                    if (*line_ptr >= '0' && *line_ptr <= '9') {
-                        line_ptr = immToken(line_ptr); // this does NOT support negative
-                    } else if (*line_ptr == '"') {
-                        line_ptr = literalToken(line_ptr);
-                    } else if ((*line_ptr >= 'A' && *line_ptr <= 'Z') || (*line_ptr >= 'a' && *line_ptr <= 'z') || *line_ptr == '_') {    
-                        line_ptr = keywordIdToken(line_ptr);
-                    } else {
-                        printf("Unknown charcter...\n");
-                        exit(EXIT_FAILURE);
-                    }
-                    break;
-            }
+                        tokens[SrcTokenStream.tokenIndex].type = TOK_LSHIFT;
+                else if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_LESS_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_LESS;
+                break;
+            case '!':
+                if (peekNext() == '=')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_BANG_EQUAL;
+                else
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_BANG;
+                break;
+            default:
+                if (peek() >= '0' && peek() <= '9')
+                    immToken(); // this does NOT support negative
+                else if (peek() == '"') {
+                    //literalToken(); 
+                } else if ((peek() >= 'A' && peek() <= 'Z') || (peek() >= 'a' && peek() <= 'z') || peek() == '_')  
+                    keywordIdToken();
+                else 
+                    EXIT_FAIL_MSG("TOKENIZE: UNKNOWN CHARACTER...");
+                break;
+        }
 
-            // 1. Token has been set
-            
-            // 2. Set line and col of token
-            tokens[SrcTokenStream.basicTokenIndex].col = column + 1;
-            tokens[SrcTokenStream.basicTokenIndex].line = line_number + 1;
+        // 1. Token has been set
+        
+        // 2. Set line and col of token
+        tokens[SrcTokenStream.tokenIndex].col = column;
+        tokens[SrcTokenStream.tokenIndex].line = scanner.line;
 
-            // 3. Set token number for attr tokens and non attr tokens
+        // 3. Update column for special cases           (if keyword, ID, LITERAL or IMM)
+        if (tokens[SrcTokenStream.tokenIndex].type < __TOK__DIVIDER__OPERATORS__ || tokens[SrcTokenStream.tokenIndex].type >= TOK_IDENTIFER && tokens[SrcTokenStream.tokenIndex].type <= TOK_IMMEDIATE) {
+            column = scanner.current - begginingLineTracker;
+            retreat(); // because its going to be incremented automatically too
+        }
 
-            // 4. Update column for special cases           (if keyword)                                                (or if ID, LITERAL, IMM)
-            if (tokens[SrcTokenStream.basicTokenIndex].token < __TOK__DIVIDER__OPERATORS__ || tokens[SrcTokenStream.basicTokenIndex].token >= TOK_IDENTIFER && tokens[SrcTokenStream.basicTokenIndex].token <= TOK_IMMEDIATE) {
-                column += line_ptr - (line_buffer + column) - 1; // (-1) because its going to be incremented automatically 
-                line_ptr--; // because its going to be incremented automatically too
-            }
+        // 4. Increment line_ptr & column for Operators that need it 
+        switch(tokens[SrcTokenStream.tokenIndex].type) {
+            case TOK_RSHIFT_EQUAL: // 3 character operators
+            case TOK_LSHIFT_EQUAL:
+            case TOK_CARET_EQUAL:
+                advance();
+                column++;
+            case TOK_PERCENT_EQUAL: // 2 character operators 
+            case TOK_AMPERSAND_EQUAL:
+            case TOK_PIPE_EQUAL:
+            case TOK_STAR_EQUAL:
+            case TOK_SLASH_EQUAL:
+            case TOK_MINUS_EQUAL:
+            case TOK_PLUS_EQUAL:
+            case TOK_MINUSMINUS:
+            case TOK_PLUSPLUS:
+            case TOK_BANG_EQUAL:
+            case TOK_EQUAL_EQUAL:
+            case TOK_GREATER_EQUAL:
+            case TOK_LESS_EQUAL:
+            case TOK_OR_OR:
+            case TOK_AND_AND:
+            case TOK_RSHIFT:
+            case TOK_LSHIFT:
+                advance();
+                column++;
+            default:
+                break;
+        }
 
-            // 5. Set token num for attr tokens
-            if (tokens[SrcTokenStream.basicTokenIndex].token >= TOK_IDENTIFER && tokens[SrcTokenStream.basicTokenIndex].token <= TOK_IMMEDIATE) {
-                tokens[SrcTokenStream.basicTokenIndex].token_num.other_attr_token_num = SrcTokenStream.attrTokenIndex;
-                attr_tokens[SrcTokenStream.attrTokenIndex].other_basic_token_num = SrcTokenStream.basicTokenIndex;
-            } else // non attr token numss
-                tokens[SrcTokenStream.basicTokenIndex].token_num.self_basic_token_num = SrcTokenStream.basicTokenIndex;
-
-            // 6. Increment line_ptr & column for Operators that need it 
-            switch(tokens[SrcTokenStream.basicTokenIndex].token) {
-                case TOK_RSHIFT_EQUAL: // 3 character operators
-                case TOK_LSHIFT_EQUAL:
-                case TOK_CARET_EQUAL:
-                    line_ptr++;
-                    column++;
-                case TOK_PERCENT_EQUAL: // 2 character operators 
-                case TOK_AMPERSAND_EQUAL:
-                case TOK_PIPE_EQUAL:
-                case TOK_STAR_EQUAL:
-                case TOK_SLASH_EQUAL:
-                case TOK_MINUS_EQUAL:
-                case TOK_PLUS_EQUAL:
-                case TOK_MINUSMINUS:
-                case TOK_PLUSPLUS:
-                case TOK_BANG_EQUAL:
-                case TOK_EQUAL_EQUAL:
-                case TOK_GREATER_EQUAL:
-                case TOK_LESS_EQUAL:
-                case TOK_OR_OR:
-                case TOK_AND_AND:
-                case TOK_RSHIFT:
-                case TOK_LSHIFT:
-                    line_ptr++;
-                    column++;
-                default:
-                    break;
-            }
-
-            // 6. Increment basic token count regardless but attr only when it makes sense
-            if (tokens[SrcTokenStream.basicTokenIndex].token >= TOK_IDENTIFER && tokens[SrcTokenStream.basicTokenIndex].token <= TOK_IMMEDIATE)
-                ts_new_index(ATTR);
-            ts_new_index(BASIC);
+        // 5. Increment basic token index
+        ts_new_index(BASIC);
 next_character:
-            line_ptr++;
-            column++;
-        }
-
-        if (*line_ptr == '\n') {
-            line_number++;
-            column = 0; // reset column
-        }
-
-        //! if the line has more than 256 characters then the token will be fucked up
-        //! you can either increase the buffer size to a larger number or really try to fix it
+        advance();
+        column++;
+        scanner.start = scanner.current;
     }
 
     // set last ending token to TOT_TOTAL
-    tokens[SrcTokenStream.basicTokenIndex].token = TOK_TOTAL;
+    tokens[SrcTokenStream.tokenIndex].type = TOK_TOTAL;
     return 1; // good
 }
 
@@ -476,8 +491,8 @@ void tokenize(FILE* file) {
                 if (ID_KW) {
                     token = TOK_IDENTIFER;
                     memcpy(attr_tokens[SrcTokenStream.a_index].data, left, right - left);
-                    attr_tokens[SrcTokenStream.a_index].other_basic_token_num = SrcTokenStream.basicTokenIndex;
-                    attr_tokens[SrcTokenStream.a_index].token = token;
+                    attr_tokens[SrcTokenStream.a_index].other_basic_token_num = SrcTokenStream.tokenIndex;
+                    attr_tokens[SrcTokenStream.a_index].type = token;
                     ts_new_index(ATTR);
                 } else {
                     // unknown token
@@ -486,10 +501,10 @@ void tokenize(FILE* file) {
             *right = saved;
 store_token:
             // basic token
-            tokens[SrcTokenStream.basicTokenIndex].token = token;
-            tokens[SrcTokenStream.basicTokenIndex].line = line;
-            tokens[SrcTokenStream.basicTokenIndex].col = col + (left - beggining);
-            tokens[SrcTokenStream.basicTokenIndex].token_num.self_basic_token_num = SrcTokenStream.basicTokenIndex;
+            tokens[SrcTokenStream.tokenIndex].type = token;
+            tokens[SrcTokenStream.tokenIndex].line = line;
+            tokens[SrcTokenStream.tokenIndex].col = col + (left - beggining);
+            tokens[SrcTokenStream.tokenIndex].token_num.self_basic_token_num = SrcTokenStream.tokenIndex;
             ts_new_index(BASIC);
 
             printf("Token: %d\n", *(int*)token);
@@ -503,20 +518,50 @@ next_token:
 
 */
 
-extern bool preProcess();
+extern bool hashPreprocessorDirectives();
+extern bool preProcessorMacroExpansion();
 
-// [0] path to file, [1], loaded keyword file
+static char* getFileSourcePointer(const char* path) {
+    FILE* file = fopen(path, "rb");
+    fseek(file, 0L, SEEK_END);
+    size_t fileSize = ftell(file);
+    rewind(file);
+    char* buffer = (char*)malloc(fileSize + 1);
+    size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
+    buffer[bytesRead] = '\0';
+    fclose(file);
+    return buffer;
+}
+
+static void printTokens(){
+    for (int i = 0; i < SrcTokenStream.tokenIndex; i++) {
+        printf("<line: %d, col: %d, token: ", tokens[i].line, tokens[i].col);
+        if ((TokenType)tokens[i].type <= TOK_MAIN)
+            printf("%s", TokenStrings[tokens[i].type]);
+        else if((TokenType)tokens[i].type == TOK_IDENTIFER)
+            printf("identifer");
+        else if((TokenType)tokens[i].type == TOK_LITERAL)
+            printf("literal");
+        else
+            printf("immediate");
+        if (tokens[i].type >= TOK_IDENTIFER && tokens[i].type <= TOK_IMMEDIATE) {
+            if (tokens[i].type == TOK_IMMEDIATE)
+                printf(", data: %d", (*(int*)(tokens[i].data)));
+            else
+                printf(", data: %s", ((char*)tokens[i].data));
+        }
+        printf(">\n");
+    }
+}
+
+// [0] path to file
 int main(int argc, char** agrv) {
 
-    printf("Sizeof: %lu\n", sizeof(SrcTokenStream.Tokens));
+    if (argc < 1) 
+        EXIT_FAIL_MSG("PROVIDE FILE PATH...");
 
-    // Open file for reading
-    char* program_filepath = agrv[1];
-    FILE* file = fopen(program_filepath, "r");
-    if (file == NULL) {
-        perror("Error opening file for reading");
-        return 1;
-    }
+    // get pointer to file data 
+    const char* source = getFileSourcePointer(agrv[1]);
 
     // Setup keyword hash table
     keywordTokenConverter = ht_create((int)__TOK__DIVIDER__OPERATORS__);
@@ -531,53 +576,25 @@ int main(int argc, char** agrv) {
     }
 
     // setup token stream
-    SrcTokenStream.basicTokenCapacity = TOKEN_STREAM_INITAL_CAPACITY;
+    SrcTokenStream.tokenCapacity = TOKEN_STREAM_INITAL_CAPACITY;
     SrcTokenStream.Tokens = (Token*)calloc(TOKEN_STREAM_INITAL_CAPACITY, sizeof(Token));
-    if (SrcTokenStream.Tokens == NULL) {
-        printf("No memory...\n");
-        exit(EXIT_FAILURE);
-    }
+    if (SrcTokenStream.Tokens == NULL)
+        EXIT_FAIL_MSG("NO MEMORY");
 
-    // setup token attr stream
-    SrcTokenStream.attrTokenCapacity = TOKEN_STREAM_INITAL_CAPACITY;
-    SrcTokenStream.AttrTokens = (AttrToken*)calloc(TOKEN_STREAM_INITAL_CAPACITY, sizeof(AttrToken));
-    if (SrcTokenStream.AttrTokens == NULL) {
-        printf("No memory...\n");
-        exit(EXIT_FAILURE);
-    }
-
+    // setup tmp pointers
     tokens = SrcTokenStream.Tokens;
-    attr_tokens = SrcTokenStream.AttrTokens;
 
-    if (!tokenize(file)) {
-        printf("Syntax error.\n");
-        return 1;
-    }
+    if (!tokenize(source))
+        EXIT_FAIL_MSG("TOKEN ERROR...");
 
-    if (!preProcess()) {
-        printf("Preprocess error.\n");
-        return 1;
-    }
+    printTokens();
 
-    for (int i = 0; i < SrcTokenStream.basicTokenIndex; i++) {
-        printf("<line: %d, col: %d, token: ", tokens[i].line, tokens[i].col);
-        if ((TokenType)tokens[i].token <= TOK_MAIN)
-            printf("%s", TokenStrings[tokens[i].token]);
-        else if((TokenType)i == TOK_IDENTIFER)
-            printf("identifer");
-        else if((TokenType)i == TOK_LITERAL)
-            printf("literal");
-        else
-            printf("immediate");
-        if (tokens[i].token >= TOK_IDENTIFER && tokens[i].token <= TOK_IMMEDIATE) {
-            if (tokens[i].token == TOK_IMMEDIATE)
-                printf(", data: %d", (*(int*)(attr_tokens[tokens[i].token_num.other_attr_token_num].data)));
-            else
-                printf(", data: %s", (*(StringToken*)(attr_tokens[tokens[i].token_num.other_attr_token_num].data)).data);
-        }
-        printf(", token_num: %d>\n", i);
-    }
+    if (!hashPreprocessorDirectives())
+        EXIT_FAIL_MSG("PREPROCESS ERROR...");
 
-    printf("File path: %s\n", program_filepath);
+    if (!preProcessorMacroExpansion())
+        EXIT_FAIL_MSG("PREPROCESS EXPANSION ERROR...");
+
+    printf("File path: %s\n", agrv[1]);
     return 0;
 }
