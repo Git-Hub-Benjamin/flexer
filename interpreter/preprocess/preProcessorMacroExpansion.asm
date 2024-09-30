@@ -50,7 +50,8 @@ while_loop_start:
     jne while_loop_continue
 
 debug1:
-    mov rsi, [currWorkingToken] ; 2nd arg (key)
+    mov rsi, [currWorkingToken] ; move address of token
+    mov rsi, [rsi] ; move key into 2nd arg
     mov rdi, [preProcessHt] ; CONFIRM THIS IS WITH BRACKETS (1st arg)
     call ht_get
 
@@ -104,14 +105,10 @@ expandLiteral:
     jmp while_loop_continue
 while_loop_continue:
     INC r11
-    cmp 
     jmp while_loop_start
 while_loop_break:
 
-    ; iterate over all tokens until TOK_TOTAL
-        ; if IDENTIFER replace attrToken.data with ht_get(HT, IDENTIFER) data
-
 exit_func:
-
+    mov rax, 1
     pop rbp
     ret

@@ -554,6 +554,8 @@ static void printTokens(){
     }
 }
 
+extern ht* preProcessHt;
+
 // [0] path to file
 int main(int argc, char** agrv) {
 
@@ -589,6 +591,8 @@ int main(int argc, char** agrv) {
     // setup tmp pointers
     tokens = SrcTokenStream.Tokens;
 
+    ht_print(keywordTokenConverter);
+
     if (!tokenize(source))
         EXIT_FAIL_MSG("TOKEN ERROR...");
 
@@ -596,6 +600,8 @@ int main(int argc, char** agrv) {
 
     if (!hashPreprocessorDirectives())
         EXIT_FAIL_MSG("PREPROCESS ERROR...");
+
+    ht_print(preProcessHt);
 
     if (!preProcessorMacroExpansion())
         EXIT_FAIL_MSG("PREPROCESS EXPANSION ERROR...");

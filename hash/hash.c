@@ -125,6 +125,41 @@ const char* ht_set(ht* table, const char* key, void* value) {
     return ht_set_entry(table, key, value, &table->length);
 }
 
+void ht_print(ht* table) {
+    printf("Table length: %lu\n", table->length);
+    hti tmp = ht_iterator(table);
+    for(int i = 0; i < table->length; i++) {
+        if(ht_next(&tmp)) {
+            printf("KEY: %s, VAL: %d\n", tmp.key, *(int*)tmp.value);
+        }
+        
+    }
+}
+
+hti ht_iterator(ht* table) {
+    hti it;
+    it._table = table;
+    it._index = 0;
+    return it;
+}
+
+bool ht_next(hti* it) {
+    // Loop till we've hit end of entries array.
+    ht* table = it->_table;
+    while (it->_index < table->capacity) {
+        size_t i = it->_index;
+        it->_index++;
+        if (table->entries[i].key != NULL) {
+            // Found next non-empty item, update iterator key and value.
+            ht_entry entry = table->entries[i];
+            it->key = entry.key;
+            it->value = entry.value;
+            return true;
+        }
+    }
+    return false;
+}
+
 // int main(){
 //     char* abc = "abc";
 //     int abc_v = 100;
