@@ -2,6 +2,10 @@ TOK_IDENTIFER equ 86
 TOK_LITERAL equ 87
 TOK_IMMEDIATE equ 88
 STRING_TOK_STRUCT_SIZE equ 16
+TOK_TOTAL equ 92
+TOK_SKIP  equ 89
+TOK_SKIP_IMM  equ 90 ; still skip but expansion needs to know what type of value is here
+TOK_SKIP_LIT equ 91 ; same as above but literal
 
 section .bss
     currWorkingToken resq 1
@@ -24,6 +28,7 @@ section .text
     ; 8-11  - TokenType
     ; 12-15 - line
     ; 16-19 - col
+    ; 20-23 - PADDING
 
 preProcessorMacroExpansion:
     push rbp
@@ -33,26 +38,32 @@ preProcessorMacroExpansion:
 
 while_loop_start:
     mov rdi, r11 ; move counter
-    shl rdi, 4 ; mutiply 16
-    add rdi, 8 ; to tokenType addr
+    imul rdi, 24 ; multiply by 24
     add rdi, [SrcTokenStreamTokens] ; add Tokens pointer 
-    mov [currWorkingToken], r10 ; save for future use
-    mov rdi, [rdi] ; get TokenType value
-    cmp rdi, TOK_IDENTIFER ; see if identifer
+    mov [currWorkingToken], rdi ; save for future use
+    add rdi, 8 ; to tokenType addr
+    mov edi, [rdi] ; get TokenType value
+
+    cmp edi, TOK_TOTAL
+    je while_loop_break ; end loop
+    cmp edi, TOK_IDENTIFER ; see if identifer
     jne while_loop_continue
 
-    mov r10, [currWorkingToken] ; restore to r10
-    add r10, 4 ; get token num
-    shl r10, 4 ; mutiply 16
-    add rsi, r10 ; get specific attrToken (2nd arg)
-
+debug1:
+    mov rsi, [currWorkingToken] ; 2nd arg (key)
     mov rdi, [preProcessHt] ; CONFIRM THIS IS WITH BRACKETS (1st arg)
     call ht_get
 
     cmp rax, 0
     je while_loop_continue ; not a macro
-    ; rax is now a pointer to an int that is an index into the tokens[?] which then that tokenNum -> attrTokens -> data is the data we need to replace this curr token with
-    mov rax, [rax] ; get index
+debug2:
+    ; rax is now a pointer to a token of TYPE IMM or LITERAL
+    ; we need to replace the current IDENTIFER with the data and update the token type
+
+    mov rax, [rax] ; derefrence the pointer to token 
+    mov [rsi], rax ; move the data pointer into data pointer of the token
+
+
     mov rdi, [SrcTokenStreamTokens] ; get tokens pointer
     shl rax, 4 ; mutiply 16
     add rax, 12 ; get to tokenNum
@@ -93,6 +104,7 @@ expandLiteral:
     jmp while_loop_continue
 while_loop_continue:
     INC r11
+    cmp 
     jmp while_loop_start
 while_loop_break:
 

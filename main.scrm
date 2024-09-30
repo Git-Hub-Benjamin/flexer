@@ -1,4 +1,6 @@
+#define A 100
+
 int main() {
     int a = 10;
-    return a;
+    return A;
 }

@@ -557,6 +557,11 @@ static void printTokens(){
 // [0] path to file
 int main(int argc, char** agrv) {
 
+    printf("Size: %lu\n", sizeof(ht*));
+    printf("Size: %lu\n", sizeof(const char*));
+    printf("Size: %lu\n", sizeof(void*));
+
+
     if (argc < 1) 
         EXIT_FAIL_MSG("PROVIDE FILE PATH...");
 

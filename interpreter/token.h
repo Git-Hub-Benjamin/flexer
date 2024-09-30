@@ -104,8 +104,10 @@ typedef enum {
     TOK_IMMEDIATE,
 
     // Total number of tokens
-    TOK_TOTAL,
     TOK_SKIP,
+    TOK_SKIP_IMM,
+    TOK_SKIP_LIT,
+    TOK_TOTAL,
 } TokenType;
 
 typedef struct {

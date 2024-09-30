@@ -3,16 +3,19 @@ section .data
 
 TOK_DEFINE equ 33
 TOK_INCLUDE equ 34
-TOK_HASH equ 84
+TOK_HASH_A equ 84
 TOK_IDENTIFER equ 86
 TOK_LITERAL equ 87
 TOK_IMMEDIATE equ 88
-TOK_TOTAL equ 89
-TOK_SKIP  equ 90
+TOK_TOTAL equ 92
+TOK_SKIP  equ 89
+TOK_SKIP_IMM  equ 90 ; still skip but expansion needs to know what type of value is here
+TOK_SKIP_LIT equ 91 ; same as above but literal
 
 section .bss
     preProcessHt resq 1 
     SrcTokenStreamTokens resq 1 ; pointer of tokens[?]
+    SrcTokenStreamTokens2 resq 1 ; debug
     currPreProcessToken resq 1 ; points to the curr #define ID IMM / LITERAL <- (the imm / literal token) 
     
 
@@ -39,16 +42,17 @@ section .text
     ; 8-11  - TokenType
     ; 12-15 - line
     ; 16-19 - col
+    ; 20-23 - (PADDING)
 
 
 hashPreprocessorDirectives:
     push rbp
     mov rbp, rsp
 
-    push rbx ; callee saved register
-
-    mov rbx, [SrcTokenStream] ; get SrcTokenStream.tokens
-    mov qword [SrcTokenStreamTokens], SrcTokenStream 
+    mov rbx, [SrcTokenStream]
+    mov qword [SrcTokenStreamTokens], rbx 
+    add rbx, 24
+    mov [SrcTokenStreamTokens2], rbx
 
     ; iterate over tokens, find a # with an define keyword following it , store the id and val following the #define into the preProcess hash table
     mov rdi, -1 ; default size for intial value
@@ -60,7 +64,6 @@ hashPreprocessorDirectives:
     mov rdi, noMemoryStr
     call printf
     mov rax, 0 ; error val
-    pop rbx
     pop rbp
     ret
 
@@ -74,21 +77,21 @@ null_check_1:
 token_while_loop:
 
     mov rdi, rcx ; get index 
-    shl rdi, 4 ; correct the size to 16
+    imul rdi, 24 ; correct the size to 16
     add rdi, [SrcTokenStreamTokens] ; get Tokens pointer
     add rdi, 8 ; get tokentype
-    mov rax, [rdi] ; move actual val into rax
-    cmp rax, TOK_TOTAL ; cmp TOT_TOTAL to current token.tokentype 
+    mov eax, [rdi] ; move actual val into rax
+    cmp eax, TOK_TOTAL ; cmp TOT_TOTAL to current token.tokentype 
     je token_while_loop_end ; break;
 
-    cmp rax, TOK_HASH ; see if hash
+    cmp rax, TOK_HASH_A ; see if hash
     jne token_while_loop_next_iter ; continue 
 
-    add rdi, 16 ; get next index
-    mov rax, [rdi] ; mov next index token type into rax
-    cmp rax, TOK_DEFINE ; see if token define
+    add rdi, 24 ; get next index
+    mov eax, [rdi] ; mov next index token type into rax
+    cmp eax, TOK_DEFINE ; see if token define
     je include_define
-    cmp rax, TOK_INCLUDE ; see if token include
+    cmp eax, TOK_INCLUDE ; see if token include
     je include_define
 
     ; inncorrect usage of #
@@ -96,19 +99,19 @@ token_while_loop:
     jmp exit_func
 
 include_define:
-    add rdi, 16 ; get next index
-    mov rax, [rdi] ; mov next index token type into rax
-    cmp rax, TOK_IDENTIFER ; see if next token is identifer
+    add rdi, 24 ; get next index
+    mov eax, [rdi] ; mov next index token type into rax
+    cmp eax, TOK_IDENTIFER ; see if next token is identifer
     je include_define_identifer 
     ; inncorrect usage of #define / #include 
     mov rax, 0 ; fail
     jmp exit_func
 include_define_identifer:
-    add rdi, 16 ; get next index
-    mov rax, [rdi] ; mov next index token type into rax
-    cmp rax, TOK_IMMEDIATE ; see if next token is immediate
+    add rdi, 24 ; get next index
+    mov eax, [rdi] ; mov next index token type into rax
+    cmp eax, TOK_IMMEDIATE ; see if next token is immediate
     je immediate_or_literal
-    cmp rax, TOK_LITERAL ; see if token is literal
+    cmp eax, TOK_LITERAL ; see if token is literal
     je immediate_or_literal
     ; inncorrect usage of #define / #include identifer 
     mov rax, 0 ; fail
@@ -132,7 +135,6 @@ immediate_or_literal:
     call printf
     mov rax, 0 ; error val
     pop rcx
-    pop rbx
     pop rbp
     ret    
 
@@ -141,27 +143,42 @@ null_check_2:
     mov rdi, [currPreProcessToken] ; restore this address
 
     ; 3rd arg void* val
-    mov rcx, rdi
+    mov rdx, rdi
 
     ; 2nd arg char* key
-    sub rdi, 16
+    sub rdi, 24
     mov rsi, rdi
 
     ; 1st arg ht_table
     mov rdi, [preProcessHt] ; pointer to ht 1st arg for ht_set 
 
+first_ht_set:
     call ht_set ; set this #define IDENTIFER LITERAL into hash table
 
     ; set #, define, id, val -> all to tokenType = TOK_SKIP
     xor rcx, rcx ; 0 out (we saved rcx above)
     mov rdx, [currPreProcessToken] ; get address of this back
-    add rdx, 12 ; get to tokenType part
-    mov rax, TOK_SKIP ; thing to fill
+    add rdx, 8 ; get to tokenType part
 set_token_skip:
-    cmp rcx, 3 ; amount to do (0 , 1 , 2 , 3 (4 times))
+    cmp rcx, 4 ; amount to do (0 , 1 , 2 , 3 (4 times))
+    mov eax, [rdx] ; move the tokentype into eax
     je set_token_skip_out
-    mov [rdx], rax ; move TOK_SKIP into curr token.tokentype
-    sub rdx, 16 ; move to before token
+    cmp eax, TOK_IMMEDIATE
+    je set_tok_imm
+    cmp eax, TOK_LITERAL
+    je set_tok_lit
+    jmp set_tok_skip
+set_tok_lit:
+    mov eax, TOK_SKIP_LIT
+    jmp set_token
+set_tok_imm:
+    mov eax, TOK_SKIP_IMM
+    jmp set_token
+set_tok_skip:
+    mov eax, TOK_SKIP ; thing to fill
+set_token:
+    mov [rdx], eax ; move TOK_SKIP into curr token.tokentype
+    sub rdx, 24 ; move to before token
     INC rcx ; rcx++
     jmp set_token_skip
 set_token_skip_out:
@@ -176,6 +193,5 @@ token_while_loop_end:
     mov rax, 1 ; All went good
 
 exit_func: ; only should be jmped to if stack is cleaned up and return code is set
-    pop rbx ; callee saved
     pop rbp
     ret
