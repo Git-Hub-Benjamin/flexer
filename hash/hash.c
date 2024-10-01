@@ -96,21 +96,27 @@ static bool ht_expand(ht* table) {
         return false;
     }
 
-    // Iterate entries, move all non-empty ones to new table's entries.
-    for (size_t i = 0; i < table->capacity; i++) {
-        ht_entry entry = table->entries[i];
-        if (entry.key != NULL) {
-            ht_set_entry(table, entry.key,
-                         entry.value, NULL);
+    // Keep track of the old entries
+    ht_entry* old_entries = table->entries;
+    size_t old_capacity = table->capacity;
+
+    // Update table capacity and entries
+    table->entries = new_entries;
+    table->capacity = new_capacity;
+    table->length = 0;
+
+    // Rehash and insert all old entries into the new table
+    for (size_t i = 0; i < old_capacity; i++) {
+        if (old_entries[i].key != NULL) {
+            ht_set(table, old_entries[i].key, old_entries[i].value);
         }
     }
 
-    // Free old entries array and update this table's details.
-    free(table->entries);
-    table->entries = new_entries;
-    table->capacity = new_capacity;
+    // Free old entries array
+    free(old_entries);
     return true;
 }
+
 
 const char* ht_set(ht* table, const char* key, void* value) {
     assert(value != NULL);
@@ -123,17 +129,6 @@ const char* ht_set(ht* table, const char* key, void* value) {
             return NULL;
 
     return ht_set_entry(table, key, value, &table->length);
-}
-
-void ht_print(ht* table) {
-    printf("Table length: %lu\n", table->length);
-    hti tmp = ht_iterator(table);
-    for(int i = 0; i < table->length; i++) {
-        if(ht_next(&tmp)) {
-            printf("KEY: %s, VAL: %d\n", tmp.key, *(int*)tmp.value);
-        }
-        
-    }
 }
 
 hti ht_iterator(ht* table) {
@@ -159,88 +154,3 @@ bool ht_next(hti* it) {
     }
     return false;
 }
-
-// int main(){
-//     char* abc = "abc";
-//     int abc_v = 100;
-
-//     char* def = "def";
-//     int def_v = 200;
-
-//     char* strings[] = {
-//         // Keywords
-//         "auto", "break", "case", "char", "const", "continue", "default", "do",
-//         "double", "else", "enum", "extern", "float", "for", "goto", "if",
-//         "inline", "int", "long", "register", "return", "short", "signed", "sizeof",
-//         "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while",
-        
-//         // Operators
-//         "+", "-", "*", "/", "%", "++", "--", "==", "!=", ">", "<", ">=", "<=",
-//         "&&", "||", "!", "&", "|", "^", "~", "<<", ">>", "=", "+=", "-=", "*=",
-//         "/=", "%=", "&=", "|=", "^=", "<<=", ">>=",
-        
-//         // Punctuation
-//         "{", "}", "[", "]", "(", ")", ";", ",", ".", "->", ":", "#", "#include", "#define",
-        
-//         // Additional common tokens
-//         "main", "printf", "scanf", "return", "int", "float", "double", "char", "void"
-//     };
-
-//     size_t num_strings = sizeof(strings) / sizeof(strings[0]);
-//     printf("Count: %ld, Strings[0]: %lu\n", num_strings, sizeof(strings));
-
-//     int collision_track[128] = {0};
-//     int collision_count = 0;
-
-//     for (int j = 0; j < num_strings; j++) {
-//         uint64_t hash = FNV_OFFSET;
-//         for(char* tmp = strings[j]; *tmp != '\0'; tmp++) {
-//             hash ^= (uint64_t)(unsigned char)(*tmp);
-//             hash *= FNV_PRIME;
-//         }
-//         size_t index = hash % 128;
-//         printf("String: %s, Hash: %" PRIu64 ", Index: %ld", strings[j], hash, index);        
-//         if (collision_track[index] == 0) 
-//             collision_track[index] = 1;
-//         else {
-//             printf(" -------> collision at %ld", index);        
-//             collision_count++;
-//         }
-//         printf("\n");
-//     }
-
-//     printf("Total collisions: %d\n", collision_count);
-
-//     ht* my_ht = ht_create(-1);
-//     uint64_t hash = hash_key(abc);
-//     size_t index = hash % my_ht->capacity;
-
-//     return 0;
-
-
-//     if (ht_set(my_ht, abc, (void*)&abc_v) == NULL) {
-//         exit(EXIT_FAILURE);
-//     }
-
-//     if (ht_get(my_ht, abc) == NULL) {
-//         printf("Could not find hash value...\n");
-//     } else {
-//         printf("Value stored here: %d\n", abc_v);
-//     }
-
-//     printf("Table length: %ld\n", my_ht->length);
-
-//     if (ht_set(my_ht, def, (void*)&def_v) == NULL) {
-//         exit(EXIT_FAILURE);
-//     }
-
-//     if (ht_get(my_ht, def) == NULL) {
-//         printf("Could not find hash value...\n");
-//     } else {
-//         printf("Value stored here: %d\n", def_v);
-//     }
-
-//     printf("Table length: %ld\n", my_ht->length);
-
-//     return 0;
-// }

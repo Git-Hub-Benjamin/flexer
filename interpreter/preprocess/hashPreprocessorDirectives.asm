@@ -13,7 +13,6 @@ TOK_SKIP_IMM  equ 90 ; still skip but expansion needs to know what type of value
 TOK_SKIP_LIT equ 91 ; same as above but literal
 
 section .bss
-    preProcessHt resq 1 
     SrcTokenStreamTokens resq 1 ; pointer of tokens[?]
     SrcTokenStreamTokens2 resq 1 ; debug
     currPreProcessToken resq 1 ; points to the curr #define ID IMM / LITERAL <- (the imm / literal token) 
@@ -21,7 +20,6 @@ section .bss
 
 section .text
     global hashPreprocessorDirectives
-    global preProcessHt ; so expander can access
     global SrcTokenStreamTokens ; why not
 
     extern malloc ; amount of bytes
@@ -49,27 +47,15 @@ hashPreprocessorDirectives:
     push rbp
     mov rbp, rsp
 
+    mov r15, rdi ; save the htTable address
+
     mov rbx, [SrcTokenStream]
     mov qword [SrcTokenStreamTokens], rbx 
     add rbx, 24
     mov [SrcTokenStreamTokens2], rbx
 
     ; iterate over tokens, find a # with an define keyword following it , store the id and val following the #define into the preProcess hash table
-    mov rdi, -1 ; default size for intial value
-    call ht_create
-    cmp rax, 0
-    jne null_check_1
 
-    ; null returned
-    mov rdi, noMemoryStr
-    call printf
-    mov rax, 0 ; error val
-    pop rbp
-    ret
-
-null_check_1:
-
-    mov [preProcessHt], rax ; move the preProcess hash table into this pointer
     mov rcx, 0 ; first Token in tokenStream
 
     ; Tokens[rcx].TokenType != TOK_TOTAL
@@ -143,16 +129,14 @@ null_check_2:
     mov rdi, [currPreProcessToken] ; restore this address
 
     ; 3rd arg void* val
-    mov rdx, rdi
+    mov rdx, rdi ; move the address of the token
 
     ; 2nd arg char* key
     sub rdi, 24
-    mov rsi, rdi
+    mov rsi, [rdi]
 
     ; 1st arg ht_table
-    mov rdi, [preProcessHt] ; pointer to ht 1st arg for ht_set 
-
-first_ht_set:
+    mov rdi, r15 ; pointer to ht 1st arg for ht_set 
     call ht_set ; set this #define IDENTIFER LITERAL into hash table
 
     ; set #, define, id, val -> all to tokenType = TOK_SKIP

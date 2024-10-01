@@ -9,76 +9,52 @@ char** ExpectErrors = {
     "Function argument ()"
 };
 
-TokenType expect_declaration[] = {TOK_VOID, TOK_INT, TOK_CHAR}; // --> expects identifer
-TokenType expect_identifer[] = {TOK_IDENTIFER}; // --> expects = OR ; OR (  
-TokenType expect_right_parathesise[] = {TOK_RPAREN};
-TokenType expect_left_parathesise[] = {TOK_LPAREN}; // expects 
-TokenType expect_statement_end[] = {TOK_COMMA};
-TokenType expect_function_argument[] = {TOK_IDENTIFER, TOK_IMMEDIATE, TOK_COMMA, TOK_RPAREN};
-TokenType expect_assignment[] = {TOK_EQUAL}; // expects IMM or IDENTIFER
-TokenType expect_immediate_value[] = {TOK_IMMEDIATE};
-TokenType expect_identifer_statement_end[] = {TOK_IDENTIFER}; // expects ; --> speical for when int a = b; --> b expects a ";" not a "="
-TokenType expect_keyword[] = {TOK_CONTINUE, TOK_BREAK, TOK_WHILE, TOK_IF};
-TokenType expect_left_parathesise_func[] = {TOK_LPAREN};
+typedef struct Node {} Node;
 
-typedef struct {
-    TokenType* expectedTokens;
-    int len;
-    EXPECT* expectNext;
-    int nextLen;
-} Expect;
+typedef struct Parser {
+    TokenStream* stream;
+    Token* current_token;
+} Parser;
 
-typedef enum {
-    EXPECT_DECLATION,
-    EXPECT_IDENTIFER,
-    EXPECT_ASSIGNMENT,
-    EXPECT_STATEMENT_END,
-    EXPECT_KEYWORD,
-    EXPECT_LPARATHESIS_PARAM, // for function arguments 
-    EXPECT_LPARATHESIS_COND, // for conditionals if, while else if
+static size_t curr_token_index = 0;
+Parser SrcPraser;
 
-    EXPECT_IDENTIFER_STATEMENT_END,
-    EXPECT_IMMEDIATE_VALUE,
-    EXPECT_FUNCTION_PARAMETER,
-    EXPECT_FUNCTION_ARGUMENT,
-    EXPECT_RPARATHESIS,
-    EXPECT_LBRACKET
-} EXPECT ;
+int curr_line;
+int curr_col;
+TokenType curr_token;
+void* curr_data;
 
-EXPECT declaration_expect_next[] = {EXPECT_IDENTIFER};
-EXPECT identifer_expect_next[] = {EXPECT_ASSIGNMENT, EXPECT_STATEMENT_END, EXPECT_LPARATHESIS_PARAM};
-EXPECT assignment_expect_next[] = {EXPECT_IMMEDIATE_VALUE, EXPECT_IDENTIFER_STATEMENT_END};
-EXPECT statement_end_expect_next[] = {EXPECT_DECLATION, EXPECT_KEYWORD};
-EXPECT keyword_expect_next[] = {EXPECT_STATEMENT_END, EXPECT_LPARATHESIS_COND, EXPECT_LBRACKET};
-EXPECT function_expect_params[] = {};
+static bool in_function = false;
+static bool global = true;
 
+void fparse() {
+    // init parser
+    SrcPraser.stream = &SrcTokenStream;
+    SrcPraser.current_token = &SrcPraser.stream->Tokens[0];
 
-// EXPECT indexes into Expects, so they must match up
+    // parse
+    while (!next_token()) {
+        if (global) {
+            if (curr_token == TOK_INT || curr_token == TOK_CHAR || curr_token == TOK_VOID) {
+                
+            }
 
-Expect Expects[] = {
-    {expect_declaration, sizeof(expect_declaration), declaration_expect_next, sizeof(declaration_expect_next)}, 
-    {expect_identifer, sizeof(expect_identifer), identifer_expect_next, sizeof(identifer_expect_next)},
-    {expect_assignment, sizeof(expect_assignment), assignment_expect_next, sizeof(assignment_expect_next)},
-    {expect_statement_end, sizeof(expect_statement_end), statement_end_expect_next, sizeof(statement_end_expect_next)},
-    {expect_keyword, sizeof(expect_keyword), keyword_expect_next, sizeof(keyword_expect_next)},
-    {expect_left_parathesise_func, sizeof(expect_left_parathesise_func), function_arg_param_expect_next, sizeof(function_arg_param_expect_next)},
+        } else {
 
-};
-
-bool verifyTokToExpect(EXPECT expect, TokenType token){
-    for(int expect_count = 0; expect < Expects[expect].len; expect_count++)
-        if (token == Expects[expect].expectedTokens[expect_count])
-            return true;
-    return false;
+        }
+    }
 }
 
-int parse() {
-    bool global = true;
-    EXPECT expect = EXPECT_DECLATION;
-    for (int token_index = 0; token_index < SrcTokenStream.basicTokenIndex; token_index++) {
-        if (verifyTokToExpect(expect, SrcTokenStream.Tokens[token_index].token))
-            expect = Expects[expect].expectNext;
-        else
-            printf("Unexpected token... Expected --> %s", ExpectErrors[expect]);
-    }
+static bool next_token() {
+    if (SrcPraser.current_token->type == TOK_TOTAL)
+        return false;
+    SrcPraser.current_token = SrcPraser.current_token + 1;
+    curr_line = SrcPraser.current_token->line;
+    curr_col = SrcPraser.current_token->col;
+    curr_token = SrcPraser.current_token->type;
+    curr_data = SrcPraser.current_token->data;
+}
+
+Node* parse_declaration() {
+    
 }

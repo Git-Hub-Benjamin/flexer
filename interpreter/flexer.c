@@ -29,7 +29,7 @@ const char* TokenStrings[] = {
     "{", "}", "[", "]", "(", ")", ";", ",", ".", "->", ":", "#",
 
     // Additional common tokens
-    "main" //86
+    "main", "identifer", "literal", "immediate", "TOK_SKIP", "TOK_SKIP_IMM", "TOK_SKIP_LIT", "TOK_TOTAL"
 }; 
 void EXIT_FAIL_MSG(const char* msg) {
     printf("%s\n", msg);
@@ -104,6 +104,10 @@ static char retreat() {
     return scanner.current[1];
 }
 
+static void updateStart() {
+    scanner.start = scanner.current;
+}
+
 static void skipWhitespace(int* col) {
     for (;;) {
         char c = peek();
@@ -115,7 +119,7 @@ static void skipWhitespace(int* col) {
                 advance();
                 break;
             default:
-                scanner.start = scanner.current;
+                updateStart();
                 return;
         }
     }
@@ -172,6 +176,8 @@ void immToken() {
             break;
     }
 
+    updateStart(); // update start to new current
+
     // get pointer to end of immediate value
     if (type == BIN || type == DEC) // BINARY & DECIAML
         while(peek() >= '0' && peek() <= '9') advance();
@@ -216,39 +222,29 @@ void immToken() {
     *(int*)(tokens[SrcTokenStream.tokenIndex].data) = (int)num;
 }
 
-// enum token_errors {
-//     none,
-//     no_empty_string_literals,
-//     no_multline_string_literals,
-//     no_never_ending_string_literals
-// };
 
-char* literalToken(char* line_ptr) {
-    return NULL;
-#ifdef A
-    if (*((peek())+1) == '"')
-        return no_empty_string_literals;
-    int len = 0;
-    peek()++;
-    char* tmp = peek();
-    while (*peek() != '"') {
-        if (*peek() == '\0') // check for null in case user never closes quotes
-            return no_never_ending_string_literals;                    
-        else if (*peek() == '\n') 
-            return no_multline_string_literals;
-        len++;
-        (peek())++;
+// "abc"
+void literalToken() {
+    if (peekNext() == '"')
+        EXIT_FAIL_MSG("NO EMPTY STRING LITERALS...");
+    advance(); // go to first character
+    updateStart(); 
+    while (peek() != '"') {
+        if (isAtEnd()) // check for null in case user never closes quotes
+            EXIT_FAIL_MSG("NO NEVER ENDING STRING LITERALS...");
+        else if (peek() == '\n')
+            scanner.line++;
+        advance();
     } 
-    attr_tokens[SrcTokenStream.attrTokenIndex].data = (struct string_token*)malloc(sizeof(StringToken));
-    StringToken* temp = (StringToken*)attr_tokens[SrcTokenStream.attrTokenIndex].data;
-    temp->len = len;
-    temp->data = malloc(len + 1); // + 1 for null char
-    memcpy(tmp, temp->data, len);
-    attr_tokens[SrcTokenStream.attrTokenIndex].type = TOK_LITERAL;
+
+    tokens[SrcTokenStream.tokenIndex].data = malloc(scanner.current - scanner.start); // we dont have to plus 1 because scanner.current is already 1 ahead of last character at "
+    memcpy(tokens[SrcTokenStream.tokenIndex].data, scanner.start, scanner.current - scanner.start ); 
+    tokens[SrcTokenStream.tokenIndex].data[scanner.current - scanner.start] = '\0';
+
+    advance(); // go past ending quote
+
+    // set token
     tokens[SrcTokenStream.tokenIndex].type = TOK_LITERAL;
-    (*(StringToken*)attr_tokens[SrcTokenStream.attrTokenIndex].data).data[len] = '\0'; // null terminating
-    (peek())++; // get off ending quote
-#endif
 }
 
 int tokenize(const char* source) {
@@ -267,10 +263,14 @@ int tokenize(const char* source) {
             column = 1;
             scanner.line++;
             advance();
-            scanner.start = scanner.current;
+            updateStart();
             begginingLineTracker = scanner.current;
             continue;
         }
+
+        bool debug = false;
+        if (peek() == '"')
+            debug = true;
 
         switch (peek()) {
             case '#':
@@ -396,7 +396,7 @@ int tokenize(const char* source) {
                 if (peek() >= '0' && peek() <= '9')
                     immToken(); // this does NOT support negative
                 else if (peek() == '"') {
-                    //literalToken(); 
+                    literalToken(); 
                 } else if ((peek() >= 'A' && peek() <= 'Z') || (peek() >= 'a' && peek() <= 'z') || peek() == '_')  
                     keywordIdToken();
                 else 
@@ -451,7 +451,7 @@ int tokenize(const char* source) {
 next_character:
         advance();
         column++;
-        scanner.start = scanner.current;
+        updateStart();
     }
 
     // set last ending token to TOT_TOTAL
@@ -459,67 +459,9 @@ next_character:
     return 1; // good
 }
 
-/*
-
-void tokenize(FILE* file) {
-    int line = 0;
-    char buffer[256];
-    while(fgets(buffer, sizeof(buffer), file)) {
-        int col = 0;
-        char* left = buffer;
-        while(*left != '\0') {
-            char* beggining = left;
-            while(*left == ' ')
-                left++;
-            char* right = left;
-            bool ID_KW = false;
-            if (*right >= 'A' && *right <= 'Z' || *right >= 'a' && *right <= 'z' || *right == '_') { // identifer or keyword
-                do right++; while (*right >= 'A' && *right <= 'Z' || *right >= 'a' && *right <= 'z' || *right == '_'); ID_KW = true;
-            } else if (*right == '"') { // literal
-                goto store_token;
-            } else if (*right >= '0' && *right <= '9') { // immediate
-                goto store_token;
-            } else { // operator or puncation
-                while (!(*right >= 'A' && *right <= 'Z' || *right >= 'a' && *right <= 'z' || *right == '_' || *right >= '0' && *right <= '9' || *right == ' ' || *right == '"' || *right == '\0' || *right == '\n')) 
-                    right++;
-            }
-            char saved = *right;
-            *right = '\0';
-            TokenType* t_data = ht_get(tokenConverter, left);
-            TokenType token = t_data == NULL ? TOK_TOTAL : *t_data;
-            if (token == TOK_TOTAL) {
-                if (ID_KW) {
-                    token = TOK_IDENTIFER;
-                    memcpy(attr_tokens[SrcTokenStream.a_index].data, left, right - left);
-                    attr_tokens[SrcTokenStream.a_index].other_basic_token_num = SrcTokenStream.tokenIndex;
-                    attr_tokens[SrcTokenStream.a_index].type = token;
-                    ts_new_index(ATTR);
-                } else {
-                    // unknown token
-                }
-            }
-            *right = saved;
-store_token:
-            // basic token
-            tokens[SrcTokenStream.tokenIndex].type = token;
-            tokens[SrcTokenStream.tokenIndex].line = line;
-            tokens[SrcTokenStream.tokenIndex].col = col + (left - beggining);
-            tokens[SrcTokenStream.tokenIndex].token_num.self_basic_token_num = SrcTokenStream.tokenIndex;
-            ts_new_index(BASIC);
-
-            printf("Token: %d\n", *(int*)token);
-next_token:
-            left = right;
-            col = col + (left - beggining);
-        }
-    }
-    line++;
-}
-
-*/
-
-extern bool hashPreprocessorDirectives();
-extern bool preProcessorMacroExpansion();
+extern bool hashPreprocessorDirectives(ht*);
+extern bool preProcessorMacroExpansion(ht*);
+static ht* preProcessHt;
 
 static char* getFileSourcePointer(const char* path) {
     FILE* file = fopen(path, "rb");
@@ -535,15 +477,8 @@ static char* getFileSourcePointer(const char* path) {
 
 static void printTokens(){
     for (int i = 0; i < SrcTokenStream.tokenIndex; i++) {
-        printf("<line: %d, col: %d, token: ", tokens[i].line, tokens[i].col);
-        if ((TokenType)tokens[i].type <= TOK_MAIN)
-            printf("%s", TokenStrings[tokens[i].type]);
-        else if((TokenType)tokens[i].type == TOK_IDENTIFER)
-            printf("identifer");
-        else if((TokenType)tokens[i].type == TOK_LITERAL)
-            printf("literal");
-        else
-            printf("immediate");
+        printf("<line: %d, col: %d, token: %s", tokens[i].line, tokens[i].col, TokenStrings[tokens[i].type]);
+
         if (tokens[i].type >= TOK_IDENTIFER && tokens[i].type <= TOK_IMMEDIATE) {
             if (tokens[i].type == TOK_IMMEDIATE)
                 printf(", data: %d", (*(int*)(tokens[i].data)));
@@ -554,15 +489,21 @@ static void printTokens(){
     }
 }
 
+void ht_print(ht* table) {
+    printf("Table length: %lu\n", table->length);
+    hti tmp = ht_iterator(table);
+    for(int i = 0; i < table->length; i++) {
+        if(ht_next(&tmp)) {
+            printf("KEY: %s, VAL: %d\n", tmp.key, *(int*)((Token*)tmp.value)->data);
+        }
+        
+    }
+}
+
 extern ht* preProcessHt;
 
 // [0] path to file
 int main(int argc, char** agrv) {
-
-    printf("Size: %lu\n", sizeof(ht*));
-    printf("Size: %lu\n", sizeof(const char*));
-    printf("Size: %lu\n", sizeof(void*));
-
 
     if (argc < 1) 
         EXIT_FAIL_MSG("PROVIDE FILE PATH...");
@@ -591,20 +532,21 @@ int main(int argc, char** agrv) {
     // setup tmp pointers
     tokens = SrcTokenStream.Tokens;
 
-    ht_print(keywordTokenConverter);
-
     if (!tokenize(source))
         EXIT_FAIL_MSG("TOKEN ERROR...");
 
-    printTokens();
+    // create preProcessHt
+    preProcessHt = ht_create(-1);
+    if (preProcessHt == NULL)
+        EXIT_FAIL_MSG("NO MEMORY...");
 
-    if (!hashPreprocessorDirectives())
+    if (!hashPreprocessorDirectives(preProcessHt))
         EXIT_FAIL_MSG("PREPROCESS ERROR...");
 
-    ht_print(preProcessHt);
-
-    if (!preProcessorMacroExpansion())
+    if (!preProcessorMacroExpansion(preProcessHt))
         EXIT_FAIL_MSG("PREPROCESS EXPANSION ERROR...");
+
+    printTokens();
 
     printf("File path: %s\n", agrv[1]);
     return 0;
