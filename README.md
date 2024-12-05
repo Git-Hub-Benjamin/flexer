@@ -18,8 +18,6 @@ A custom lexer and preprocessor written in C++ that handles tokenization and pre
 
 ## Usage
 ./flexer.out main.c 
-                ^
-              source file
 
 ## Sample Output
 ```c
