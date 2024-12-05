@@ -12,9 +12,9 @@ A custom lexer and preprocessor written in C++ that handles tokenization and pre
 - Error reporting with line/column information
 
 ## Build (Compiles on Linux only)
-mkdir build
-make
-cd build
+1. mkdir build
+2. make
+3. cd build
 
 ## Usage
 ./flexer.out main.c 
