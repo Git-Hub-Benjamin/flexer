@@ -144,10 +144,15 @@ static void keywordIdToken() {
         tokens[SrcTokenStream.tokenIndex].type = *(TokenType*)tokdata;
     } else { // copy the identifer into attr token
         tokens[SrcTokenStream.tokenIndex].type = TOK_IDENTIFER; // set basic token
-        tokens[SrcTokenStream.tokenIndex].data = (char*)malloc(scanner.current - scanner.start + 1); // malloc size of string
+        size_t len = scanner.current - scanner.start + 1; // +1 for null terminator
+        tokens[SrcTokenStream.tokenIndex].data = (char*)malloc(len); // malloc size of string
         if (tokens[SrcTokenStream.tokenIndex].data == NULL)
             EXIT_FAIL_MSG("NO MEMORY...");
-        strcpy_s(tokens[SrcTokenStream.tokenIndex].data, scanner.current - scanner.start + 1, scanner.start);
+        strncpy_s(tokens[SrcTokenStream.tokenIndex].data, // destination
+                 len,                                     // size of destination buffer
+                 scanner.start,                          // source
+                 len - 1);                              // number of characters to copy
+        tokens[SrcTokenStream.tokenIndex].data[len - 1] = '\0';
     }
 
     // restore saved char
