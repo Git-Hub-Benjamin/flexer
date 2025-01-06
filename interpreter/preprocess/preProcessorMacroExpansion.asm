@@ -1,3 +1,6 @@
+%include "win-compatibility.inc"
+default rel
+
 TOK_IDENTIFER equ 86
 TOK_LITERAL equ 87
 TOK_IMMEDIATE equ 88
@@ -32,8 +35,7 @@ section .text
     ; 20-23 - PADDING
 
 preProcessorMacroExpansion:
-    push rbp
-    mov rbp, rsp
+    PROLOGUE
 
     mov r15, rdi ; save preProcessHt pointer
 
@@ -99,5 +101,4 @@ while_loop_break:
 
 exit_func:
     mov rax, 1
-    pop rbp
-    ret
+    EPILOGUE

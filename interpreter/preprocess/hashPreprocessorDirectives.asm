@@ -1,5 +1,9 @@
+%include "win-compatibility.inc"
+default rel
+
 section .data
     noMemoryStr db 'No memory...', 0
+    printString db 'hashPreprocessorDirectives...', 0  ; Add newline
 
 TOK_DEFINE equ 33
 TOK_INCLUDE equ 34
@@ -14,7 +18,6 @@ TOK_SKIP_LIT equ 91 ; same as above but literal
 
 section .bss
     SrcTokenStreamTokens resq 1 ; pointer of tokens[?]
-    SrcTokenStreamTokens2 resq 1 ; debug
     currPreProcessToken resq 1 ; points to the curr #define ID IMM / LITERAL <- (the imm / literal token) 
     
 
@@ -44,15 +47,11 @@ section .text
 
 
 hashPreprocessorDirectives:
-    push rbp
-    mov rbp, rsp
-
-    mov r15, rdi ; save the htTable address
+    PROLOGUE
 
     mov rbx, [SrcTokenStream]
     mov qword [SrcTokenStreamTokens], rbx 
     add rbx, 24
-    mov [SrcTokenStreamTokens2], rbx
 
     ; iterate over tokens, find a # with an define keyword following it , store the id and val following the #define into the preProcess hash table
 
@@ -121,8 +120,7 @@ immediate_or_literal:
     call printf
     mov rax, 0 ; error val
     pop rcx
-    pop rbp
-    ret    
+    EPILOGUE   
 
 null_check_2:
 
@@ -177,5 +175,4 @@ token_while_loop_end:
     mov rax, 1 ; All went good
 
 exit_func: ; only should be jmped to if stack is cleaned up and return code is set
-    pop rbp
-    ret
+    EPILOGUE

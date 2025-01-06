@@ -45,5 +45,3 @@ hti ht_iterator(ht* table);
 // and value to current item, and return true. If there are no more
 // items, return false. Don't call ht_set during iteration.
 bool ht_next(hti* it);
-
-void ht_print(ht* table);

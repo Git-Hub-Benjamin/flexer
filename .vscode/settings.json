@@ -43,6 +43,7 @@
         "limits": "c",
         "ostream": "c",
         "streambuf": "c",
-        "utility": "c"
+        "utility": "c",
+        "platform.h": "c"
     }
 }

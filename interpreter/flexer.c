@@ -7,6 +7,8 @@
 #include <inttypes.h>
 #include "token.h"
 #include "../hash/hash.h"
+#include <string.h>
+#include "platform.h"
 
 const char* TokenStrings[] = {
     // Keywords
@@ -145,7 +147,7 @@ static void keywordIdToken() {
         tokens[SrcTokenStream.tokenIndex].data = (char*)malloc(scanner.current - scanner.start + 1); // malloc size of string
         if (tokens[SrcTokenStream.tokenIndex].data == NULL)
             EXIT_FAIL_MSG("NO MEMORY...");
-        strcpy(tokens[SrcTokenStream.tokenIndex].data, scanner.start); // copy 
+        strcpy_s(tokens[SrcTokenStream.tokenIndex].data, scanner.current - scanner.start + 1, scanner.start);
     }
 
     // restore saved char
@@ -459,16 +461,18 @@ next_character:
     return 1; // good
 }
 
-extern bool hashPreprocessorDirectives(ht*);
-extern bool preProcessorMacroExpansion(ht*);
-static ht* preProcessHt;
-
 static char* getFileSourcePointer(const char* path) {
-    FILE* file = fopen(path, "rb");
+    FILE* file;
+    SAFE_FOPEN(file, path, "rb");    
     fseek(file, 0L, SEEK_END);
     size_t fileSize = ftell(file);
     rewind(file);
     char* buffer = (char*)malloc(fileSize + 1);
+    if (buffer == NULL) {
+        fclose(file);
+        EXIT_FAIL_MSG("NO MEMORY...");
+        return NULL;
+    }
     size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
     buffer[bytesRead] = '\0';
     fclose(file);
@@ -490,7 +494,7 @@ static void printTokens(){
 }
 
 void ht_print(ht* table) {
-    printf("Table length: %lu\n", table->length);
+    printf("Table length: " SIZE_T_FMT "\n", table->length);
     hti tmp = ht_iterator(table);
     for(int i = 0; i < table->length; i++) {
         if(ht_next(&tmp)) {
@@ -500,12 +504,16 @@ void ht_print(ht* table) {
     }
 }
 
-extern ht* preProcessHt;
+extern bool hashPreprocessorDirectives(ht*);
+extern bool preProcessorMacroExpansion(ht*);
+static ht* preProcessHt;
 
 // [0] path to file
 int main(int argc, char** agrv) {
 
-    if (argc < 1) 
+    printf("Lexing stage, Argc: %d\n", argc);
+
+    if (argc <= 1) 
         EXIT_FAIL_MSG("PROVIDE FILE PATH...");
 
     // get pointer to file data 
@@ -535,16 +543,18 @@ int main(int argc, char** agrv) {
     if (!tokenize(source))
         EXIT_FAIL_MSG("TOKEN ERROR...");
 
+    printTokens();
+
     // create preProcessHt
     preProcessHt = ht_create(-1);
     if (preProcessHt == NULL)
         EXIT_FAIL_MSG("NO MEMORY...");
 
-    if (!hashPreprocessorDirectives(preProcessHt))
-        EXIT_FAIL_MSG("PREPROCESS ERROR...");
+     if (!hashPreprocessorDirectives(preProcessHt))
+         EXIT_FAIL_MSG("PREPROCESS ERROR...");
 
-    if (!preProcessorMacroExpansion(preProcessHt))
-        EXIT_FAIL_MSG("PREPROCESS EXPANSION ERROR...");
+     if (!preProcessorMacroExpansion(preProcessHt))
+         EXIT_FAIL_MSG("PREPROCESS EXPANSION ERROR...");
 
     printTokens();
 
