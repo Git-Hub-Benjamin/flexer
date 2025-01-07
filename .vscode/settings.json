@@ -44,6 +44,7 @@
         "ostream": "c",
         "streambuf": "c",
         "utility": "c",
-        "platform.h": "c"
+        "platform.h": "c",
+        "errno.h": "c"
     }
 }

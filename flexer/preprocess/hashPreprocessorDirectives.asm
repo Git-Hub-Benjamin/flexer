@@ -1,4 +1,4 @@
-%include "win-compatibility.inc"
+%include "./win-compatibility.inc"
 default rel
 
 section .data
@@ -8,10 +8,10 @@ section .data
 TOK_DEFINE equ 33
 TOK_INCLUDE equ 34
 TOK_HASH_A equ 84
-TOK_IDENTIFER equ 86
-TOK_LITERAL equ 87
-TOK_IMMEDIATE equ 88
-TOK_TOTAL equ 92
+TOK_IDENTIFIER equ 86
+TOK_STRING_LITERAL equ 87
+TOK_INTEGER_LITERAL equ 88
+TOK_EOF equ 92
 TOK_SKIP  equ 89
 TOK_SKIP_IMM  equ 90 ; still skip but expansion needs to know what type of value is here
 TOK_SKIP_LIT equ 91 ; same as above but literal
@@ -57,7 +57,7 @@ hashPreprocessorDirectives:
 
     mov rcx, 0 ; first Token in tokenStream
 
-    ; Tokens[rcx].TokenType != TOK_TOTAL
+    ; Tokens[rcx].TokenType != TOK_EOF
 
 token_while_loop:
 
@@ -66,7 +66,7 @@ token_while_loop:
     add rdi, [SrcTokenStreamTokens] ; get Tokens pointer
     add rdi, 8 ; get tokentype
     mov eax, [rdi] ; move actual val into rax
-    cmp eax, TOK_TOTAL ; cmp TOT_TOTAL to current token.tokentype 
+    cmp eax, TOK_EOF ; cmp TOT_TOTAL to current token.tokentype 
     je token_while_loop_end ; break;
 
     cmp rax, TOK_HASH_A ; see if hash
@@ -86,7 +86,7 @@ token_while_loop:
 include_define:
     add rdi, 24 ; get next index
     mov eax, [rdi] ; mov next index token type into rax
-    cmp eax, TOK_IDENTIFER ; see if next token is identifer
+    cmp eax, TOK_IDENTIFIER ; see if next token is identifer
     je include_define_identifer 
     ; inncorrect usage of #define / #include 
     mov rax, 0 ; fail
@@ -94,9 +94,9 @@ include_define:
 include_define_identifer:
     add rdi, 24 ; get next index
     mov eax, [rdi] ; mov next index token type into rax
-    cmp eax, TOK_IMMEDIATE ; see if next token is immediate
+    cmp eax, TOK_INTEGER_LITERAL ; see if next token is immediate
     je immediate_or_literal
-    cmp eax, TOK_LITERAL ; see if token is literal
+    cmp eax, TOK_STRING_LITERAL ; see if token is literal
     je immediate_or_literal
     ; inncorrect usage of #define / #include identifer 
     mov rax, 0 ; fail
@@ -145,9 +145,9 @@ set_token_skip:
     cmp rcx, 4 ; amount to do (0 , 1 , 2 , 3 (4 times))
     mov eax, [rdx] ; move the tokentype into eax
     je set_token_skip_out
-    cmp eax, TOK_IMMEDIATE
+    cmp eax, TOK_INTEGER_LITERAL
     je set_tok_imm
-    cmp eax, TOK_LITERAL
+    cmp eax, TOK_STRING_LITERAL
     je set_tok_lit
     jmp set_tok_skip
 set_tok_lit:

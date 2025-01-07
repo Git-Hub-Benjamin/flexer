@@ -54,22 +54,22 @@ typedef enum {
     TOK_PERCENT,
     TOK_PLUSPLUS,
     TOK_MINUSMINUS,
-    TOK_EQUAL_EQUAL,
-    TOK_BANG_EQUAL,
-    TOK_GREATER,
-    TOK_LESS,
-    TOK_GREATER_EQUAL,
-    TOK_LESS_EQUAL,
-    TOK_AND_AND,
-    TOK_OR_OR,
-    TOK_BANG,
+    TOK_EQ,
+    TOK_NEQ,
+    TOK_GT,
+    TOK_LT,
+    TOK_GTE,
+    TOK_LTE,
+    TOK_AND,
+    TOK_OR,
+    TOK_NOT,
     TOK_AMPERSAND,
     TOK_PIPE,
     TOK_CARET,
     TOK_TILDE,
     TOK_LSHIFT,
     TOK_RSHIFT,
-    TOK_EQUAL,
+    TOK_EQUALS,
     TOK_PLUS_EQUAL,
     TOK_MINUS_EQUAL,
     TOK_STAR_EQUAL,
@@ -99,16 +99,18 @@ typedef enum {
 
     // Additional common tokens
     TOK_MAIN,
-    TOK_IDENTIFER,
-    TOK_LITERAL,
-    TOK_IMMEDIATE,
+    TOK_IDENTIFIER,
+    TOK_STRING_LITERAL,
+    TOK_INTEGER_LITERAL,
 
     // Total number of tokens
     TOK_SKIP,
     TOK_SKIP_IMM,
     TOK_SKIP_LIT,
-    TOK_TOTAL,
+    TOK_EOF,
 } TokenType;
+
+#define TOKEN_STREAM_INITAL_CAPACITY 512
 
 typedef struct {
     char* data; // for imm, id, literal
@@ -116,8 +118,6 @@ typedef struct {
     int line;
     int col;
 } Token;
-
-#define TOKEN_STREAM_INITAL_CAPACITY 512
 
 typedef struct {
     Token* Tokens;

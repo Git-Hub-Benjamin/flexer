@@ -1,6 +1,13 @@
-#include <stdio.h>
+int add(int a, int b) {
+    return a + b;
+}
 
 int main() {
-    printf("Poopy\n");
+    int a = 10;
+
+    a = (10 - (2 * 3));
+
+    if(a == 10)
+        return 1;
     return 0;
 }

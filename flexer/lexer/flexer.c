@@ -5,10 +5,12 @@
 #include <math.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include "token.h"
-#include "../hash/hash.h"
 #include <string.h>
-#include "platform.h"
+#include "../token.h"
+#include "../hash/hash.h"
+#include "../platform.h"
+#include "../flexer.h"
+#include "../parser/fparse.h"
 
 const char* TokenStrings[] = {
     // Keywords
@@ -31,7 +33,7 @@ const char* TokenStrings[] = {
     "{", "}", "[", "]", "(", ")", ";", ",", ".", "->", ":", "#",
 
     // Additional common tokens
-    "main", "identifer", "literal", "immediate", "TOK_SKIP", "TOK_SKIP_IMM", "TOK_SKIP_LIT", "TOK_TOTAL"
+    "main", "identifer", "literal", "immediate", "TOK_SKIP", "TOK_SKIP_IMM", "TOK_SKIP_LIT", "TOK_EOF"
 }; 
 void EXIT_FAIL_MSG(const char* msg) {
     printf("%s\n", msg);
@@ -143,15 +145,19 @@ static void keywordIdToken() {
     if (tokdata != NULL) { // found keyword 
         tokens[SrcTokenStream.tokenIndex].type = *(TokenType*)tokdata;
     } else { // copy the identifer into attr token
-        tokens[SrcTokenStream.tokenIndex].type = TOK_IDENTIFER; // set basic token
+        tokens[SrcTokenStream.tokenIndex].type = TOK_IDENTIFIER; // set basic token
         size_t len = scanner.current - scanner.start + 1; // +1 for null terminator
         tokens[SrcTokenStream.tokenIndex].data = (char*)malloc(len); // malloc size of string
         if (tokens[SrcTokenStream.tokenIndex].data == NULL)
             EXIT_FAIL_MSG("NO MEMORY...");
+#if defined(_WIN32) || defined(_WIN64)
         strncpy_s(tokens[SrcTokenStream.tokenIndex].data, // destination
                  len,                                     // size of destination buffer
                  scanner.start,                          // source
                  len - 1);                              // number of characters to copy
+#else
+        strncpy(tokens[SrcTokenStream.tokenIndex].data, scanner.start, len);
+#endif
         tokens[SrcTokenStream.tokenIndex].data[len - 1] = '\0';
     }
 
@@ -224,7 +230,7 @@ void immToken() {
     scanner.current += digit_count + 1; 
 
     // store the result
-    tokens[SrcTokenStream.tokenIndex].type = TOK_IMMEDIATE;
+    tokens[SrcTokenStream.tokenIndex].type = TOK_INTEGER_LITERAL;
     tokens[SrcTokenStream.tokenIndex].data = malloc(sizeof(int));
     *(int*)(tokens[SrcTokenStream.tokenIndex].data) = (int)num;
 }
@@ -251,7 +257,7 @@ void literalToken() {
     advance(); // go past ending quote
 
     // set token
-    tokens[SrcTokenStream.tokenIndex].type = TOK_LITERAL;
+    tokens[SrcTokenStream.tokenIndex].type = TOK_STRING_LITERAL;
 }
 
 int tokenize(const char* source) {
@@ -339,13 +345,13 @@ int tokenize(const char* source) {
                 break;
             case '=':
                 if (peekNext() == '=') 
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_EQUAL_EQUAL;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_EQ;
                 else 
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_EQUAL;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_EQUALS;
                 break;
             case '&':
                 if (peekNext() == '&')
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_AND_AND;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_AND;
                 else if (peekNext() == '=')
                     tokens[SrcTokenStream.tokenIndex].type = TOK_AMPERSAND_EQUAL;
                 else
@@ -353,7 +359,7 @@ int tokenize(const char* source) {
                 break;
             case '|':
                 if (peekNext() == '|')
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_OR_OR;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_OR;
                 else if (peekNext() == '=')
                     tokens[SrcTokenStream.tokenIndex].type = TOK_PIPE_EQUAL;
                 else
@@ -378,9 +384,9 @@ int tokenize(const char* source) {
                     else
                         tokens[SrcTokenStream.tokenIndex].type = TOK_RSHIFT;
                 else if (peekNext() == '=')
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_GREATER_EQUAL;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_GTE;
                 else
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_GREATER;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_GT;
                 break;
             case '<':
                 if (peekNext() == '<')
@@ -389,15 +395,15 @@ int tokenize(const char* source) {
                     else
                         tokens[SrcTokenStream.tokenIndex].type = TOK_LSHIFT;
                 else if (peekNext() == '=')
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_LESS_EQUAL;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_LTE;
                 else
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_LESS;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_LT;
                 break;
             case '!':
                 if (peekNext() == '=')
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_BANG_EQUAL;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_NEQ;
                 else
-                    tokens[SrcTokenStream.tokenIndex].type = TOK_BANG;
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_NOT;
                 break;
             default:
                 if (peek() >= '0' && peek() <= '9')
@@ -418,7 +424,7 @@ int tokenize(const char* source) {
         tokens[SrcTokenStream.tokenIndex].line = scanner.line;
 
         // 3. Update column for special cases           (if keyword, ID, LITERAL or IMM)
-        if (tokens[SrcTokenStream.tokenIndex].type < __TOK__DIVIDER__OPERATORS__ || tokens[SrcTokenStream.tokenIndex].type >= TOK_IDENTIFER && tokens[SrcTokenStream.tokenIndex].type <= TOK_IMMEDIATE) {
+        if (tokens[SrcTokenStream.tokenIndex].type < __TOK__DIVIDER__OPERATORS__ || tokens[SrcTokenStream.tokenIndex].type >= TOK_IDENTIFIER && tokens[SrcTokenStream.tokenIndex].type <= TOK_INTEGER_LITERAL) {
             column = scanner.current - begginingLineTracker;
             retreat(); // because its going to be incremented automatically too
         }
@@ -439,12 +445,12 @@ int tokenize(const char* source) {
             case TOK_PLUS_EQUAL:
             case TOK_MINUSMINUS:
             case TOK_PLUSPLUS:
-            case TOK_BANG_EQUAL:
-            case TOK_EQUAL_EQUAL:
-            case TOK_GREATER_EQUAL:
-            case TOK_LESS_EQUAL:
-            case TOK_OR_OR:
-            case TOK_AND_AND:
+            case TOK_NEQ:
+            case TOK_EQ:
+            case TOK_GTE:
+            case TOK_LTE:
+            case TOK_OR:
+            case TOK_AND:
             case TOK_RSHIFT:
             case TOK_LSHIFT:
                 advance();
@@ -462,7 +468,7 @@ next_character:
     }
 
     // set last ending token to TOT_TOTAL
-    tokens[SrcTokenStream.tokenIndex].type = TOK_TOTAL;
+    tokens[SrcTokenStream.tokenIndex].type = TOK_EOF;
     return 1; // good
 }
 
@@ -488,8 +494,8 @@ static void printTokens(){
     for (int i = 0; i < SrcTokenStream.tokenIndex; i++) {
         printf("<line: %d, col: %d, token: %s", tokens[i].line, tokens[i].col, TokenStrings[tokens[i].type]);
 
-        if (tokens[i].type >= TOK_IDENTIFER && tokens[i].type <= TOK_IMMEDIATE) {
-            if (tokens[i].type == TOK_IMMEDIATE)
+        if (tokens[i].type >= TOK_IDENTIFIER && tokens[i].type <= TOK_INTEGER_LITERAL) {
+            if (tokens[i].type == TOK_INTEGER_LITERAL)
                 printf(", data: %d", (*(int*)(tokens[i].data)));
             else
                 printf(", data: %s", ((char*)tokens[i].data));
@@ -509,14 +515,83 @@ void ht_print(ht* table) {
     }
 }
 
+void printASTNode(ASTNode* node, int depth) {
+    // Print indentation
+    for (int i = 0; i < depth; i++) {
+        printf("  ");
+    }
+    
+    // Print node type
+    printf("Node Type: ");
+    switch (node->type) {
+        case NODE_PROGRAM:        printf("PROGRAM"); break;
+        case NODE_FUNCTION:       printf("FUNCTION"); break;
+        case NODE_VARIABLE_DECL:  printf("VARIABLE_DECL"); break;
+        case NODE_PARAMETER:      printf("PARAMETER"); break;
+        case NODE_BLOCK:         printf("BLOCK"); break;
+        case NODE_RETURN:        printf("RETURN"); break;
+        case NODE_IF:            printf("IF"); break;
+        case NODE_WHILE:         printf("WHILE"); break;
+        case NODE_EXPRESSION:    printf("EXPRESSION"); break;
+        case NODE_BINARY_OP:     printf("BINARY_OP"); break;
+        case NODE_UNARY_OP:      printf("UNARY_OP"); break;
+        case NODE_LITERAL:       printf("LITERAL"); break;
+        case NODE_IDENTIFIER:    printf("IDENTIFIER"); break;
+        case NODE_CALL:         printf("CALL"); break;
+        default:                printf("UNKNOWN"); break;
+    }
+    
+    // Print token information if present
+    if (node->token.data) {
+        printf(" | Token: %s", node->token.data);
+    }
+    
+    // Print value if present
+    if (node->value) {
+        printf(" | Value: %s", node->value);
+    }
+    
+    printf("\n");
+    
+    // Print children recursively
+    for (size_t i = 0; i < node->childCount; i++) {
+        printASTNode(&node->children[i], depth + 1);
+    }
+    
+    // Print next node in list if present
+    if (node->next) {
+        printASTNode(node->next, depth);
+    }
+}
+
+// Wrapper function to start printing from root
+void printAST(ASTNode* root) {
+    if (!root) {
+        printf("Empty AST\n");
+        return;
+    }
+    
+    printf("Abstract Syntax Tree:\n");
+    printASTNode(root, 0);
+}
+
+
 extern bool hashPreprocessorDirectives(ht*);
 extern bool preProcessorMacroExpansion(ht*);
 static ht* preProcessHt;
+Config flexerCfg;
 
 // [0] path to file
 int main(int argc, char** agrv) {
 
-    printf("Lexing stage, Argc: %d\n", argc);
+    printf("Lexing stage, Argc: %d:\n", argc);
+    for(int i = 1; i < argc; i++) {
+        if (strcmp(agrv[i], "--no-preprocess"))
+            flexerCfg.no_preprocess = true;
+
+        printf("\t%s\n", agrv[i]);
+    }
+
 
     if (argc <= 1) 
         EXIT_FAIL_MSG("PROVIDE FILE PATH...");
@@ -548,8 +623,6 @@ int main(int argc, char** agrv) {
     if (!tokenize(source))
         EXIT_FAIL_MSG("TOKEN ERROR...");
 
-    printTokens();
-
     // create preProcessHt
     preProcessHt = ht_create(-1);
     if (preProcessHt == NULL)
@@ -562,6 +635,10 @@ int main(int argc, char** agrv) {
          EXIT_FAIL_MSG("PREPROCESS EXPANSION ERROR...");
 
     printTokens();
+
+    printf("Parsing...\n");
+
+    printAST(parse(SrcTokenStream.Tokens));
 
     printf("File path: %s\n", agrv[1]);
     return 0;

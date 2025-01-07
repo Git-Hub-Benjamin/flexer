@@ -1,11 +1,11 @@
 %include "win-compatibility.inc"
 default rel
 
-TOK_IDENTIFER equ 86
-TOK_LITERAL equ 87
-TOK_IMMEDIATE equ 88
+TOK_IDENTIFIER equ 86
+TOK_STRING_LITERAL equ 87
+TOK_INTEGER_LITERAL equ 88
 STRING_TOK_STRUCT_SIZE equ 16
-TOK_TOTAL equ 92
+TOK_EOF equ 92
 TOK_SKIP  equ 89
 TOK_SKIP_IMM  equ 90 ; still skip but expansion needs to know what type of value is here
 TOK_SKIP_LIT equ 91 ; same as above but literal
@@ -49,9 +49,9 @@ while_loop_start:
     add rdi, 8 ; to tokenType addr
     mov edi, [rdi] ; get TokenType value
 
-    cmp edi, TOK_TOTAL
+    cmp edi, TOK_EOF
     je while_loop_break ; end loop
-    cmp edi, TOK_IDENTIFER ; see if identifer
+    cmp edi, TOK_IDENTIFIER ; see if identifer
     jne while_loop_continue
 
     mov rsi, [currWorkingToken] ; move address of token
@@ -89,10 +89,10 @@ while_loop_start:
     mov rax, 0 ; ERROR this should not happen
     jmp exit_func
 replaceImm:
-    mov dword [rdi], TOK_IMMEDIATE ; update new tokenType    
+    mov dword [rdi], TOK_INTEGER_LITERAL ; update new tokenType    
     jmp while_loop_continue ; next iteration
 replaceLiteral:
-    mov dword [rdi], TOK_LITERAL ; update new tokenType
+    mov dword [rdi], TOK_STRING_LITERAL ; update new tokenType
     jmp while_loop_continue
 while_loop_continue:
     INC r12
