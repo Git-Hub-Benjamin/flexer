@@ -45,6 +45,9 @@
         "streambuf": "c",
         "utility": "c",
         "platform.h": "c",
-        "errno.h": "c"
+        "errno.h": "c",
+        "fparse.h": "c",
+        "iosfwd": "c",
+        "terminal-colors.h": "c"
     }
 }

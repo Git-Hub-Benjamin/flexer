@@ -1,16 +1,12 @@
-#define A 100
-#define B 200
-#define _TOK_DIV 0x100
-#define _NAME "jonah"
+#define BENJAMIN 100
 
-char* name = "Benjamin";
-
-int add(int a, int b) {
+int main() {
+    int* a = BENJAMIN;
+    int b = 0;
     return a + b;
 }
 
-int main() {
-    int a = 10;
-    char* myname = _NAME
-    return A + B + _TOK_DIV;
+int* add(int a, int b) {
+    int c = a + b;
+    return &c;
 }

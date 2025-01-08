@@ -6,8 +6,7 @@ typedef struct {
     bool verbose_mode;
     bool no_preprocess;
     bool dump_tokens;
-    char* output_file;
-    char* input_file;
+    bool dump_ast;
 } Config;
 
 #endif

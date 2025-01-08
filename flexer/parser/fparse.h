@@ -1,20 +1,11 @@
-#ifndef FPARSE_H
-#define FPARSE_H
+#ifndef PARSER_H
+#define PARSER_H
 
-#include <stdint.h>
-#include "../token.h"
-#include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stddef.h>
+#include "../token.h" 
 
-// Parser context
-typedef struct {
-    Token* tokens;
-    Token* current;
-    int errors;
-} Parser;
-
-// AST Node Types
 typedef enum {
     NODE_PROGRAM,
     NODE_FUNCTION,
@@ -29,20 +20,27 @@ typedef enum {
     NODE_UNARY_OP,
     NODE_LITERAL,
     NODE_IDENTIFIER,
-    NODE_CALL
+    NODE_CALL,
+    NODE_ADDR_OF
 } NodeType;
 
-// Generic AST Node structure
 typedef struct ASTNode {
     NodeType type;
-    struct ASTNode* children;
+    Token token;
+    struct ASTNode** children;  // Double pointer
     size_t childCount;
     size_t childCapacity;
-    Token token;          // Original token that created this node
-    char* value;         // For literals and identifiers
-    struct ASTNode* next; // For parameter lists, statement lists, etc.
+    void* value;
+    struct ASTNode* next;
 } ASTNode;
 
-ASTNode* parse(Token*);
+typedef struct FunctionType {
+    int pointerDepth;
+    TokenType returnType;
+} FunctionType;
 
-#endif
+// Public interface
+ASTNode* parse(Token* tokens);
+void printAST(ASTNode* root);
+
+#endif // PARSER_H

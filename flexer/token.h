@@ -110,7 +110,7 @@ typedef enum {
     TOK_EOF,
 } TokenType;
 
-#define TOKEN_STREAM_INITAL_CAPACITY 512
+#define TOKEN_STREAM_INITAL_CAPACITY 2
 
 typedef struct {
     char* data; // for imm, id, literal

@@ -11,6 +11,12 @@
 #include "../platform.h"
 #include "../flexer.h"
 #include "../parser/fparse.h"
+#include "../terminal-colors.h"
+
+extern bool hashPreprocessorDirectives(ht*);
+extern bool preProcessorMacroExpansion(ht*);
+static ht* preProcessHt;
+Config flexerCfg;
 
 const char* TokenStrings[] = {
     // Keywords
@@ -45,15 +51,17 @@ TokenStream SrcTokenStream; // Source file token stream
 static Token* tokens; // tmp pointer to the same address as (SrcTokenStream.tokens)
 
 // see if we need to expand the stream
-enum ts_type {BASIC, ATTR};
-static void ts_new_index(enum ts_type type) {
-    if(SrcTokenStream.tokenIndex >= SrcTokenStream.tokenCapacity) {
+static void ts_new_index() {
+    SrcTokenStream.tokenIndex++;
+    if(SrcTokenStream.tokenIndex == SrcTokenStream.tokenCapacity) {
         size_t new_capacity = SrcTokenStream.tokenCapacity * 2;
 
         if (new_capacity < SrcTokenStream.tokenCapacity) 
             EXIT_FAIL_MSG("OVERFLOW...");
+        
         // 0 out new memory
         void* new_stream = calloc(new_capacity, sizeof(Token));
+        
         if (new_stream == NULL)
             EXIT_FAIL_MSG("NO MEMORY...");
 
@@ -68,7 +76,6 @@ static void ts_new_index(enum ts_type type) {
         // update tmp pointer for lexer to new pointer
         tokens = SrcTokenStream.Tokens;
     }
-    SrcTokenStream.tokenIndex++;
 }
 
 
@@ -281,13 +288,11 @@ int tokenize(const char* source) {
             continue;
         }
 
-        bool debug = false;
-        if (peek() == '"')
-            debug = true;
-
         switch (peek()) {
             case '#':
                 tokens[SrcTokenStream.tokenIndex].type = TOK_HASH; break;
+            case '.':
+                tokens[SrcTokenStream.tokenIndex].type = TOK_DOT; break;
             case '(':
                 tokens[SrcTokenStream.tokenIndex].type = TOK_LPAREN; break;
             case ')':
@@ -335,7 +340,9 @@ int tokenize(const char* source) {
                     tokens[SrcTokenStream.tokenIndex].type = TOK_MINUSMINUS;
                 else if (peekNext() == '=')
                     tokens[SrcTokenStream.tokenIndex].type = TOK_MINUS_EQUAL;
-                else
+                else if (peekNext() == '>')
+                    tokens[SrcTokenStream.tokenIndex].type = TOK_ARROW;
+                else //! TODO: CHECK THIS WORKS
                     if (peekNext() >= '0' && peekNext() <= '9') {
                         advance(); // advance pass negative sign
                         immToken(); // get number
@@ -445,6 +452,7 @@ int tokenize(const char* source) {
             case TOK_PLUS_EQUAL:
             case TOK_MINUSMINUS:
             case TOK_PLUSPLUS:
+            case TOK_ARROW:
             case TOK_NEQ:
             case TOK_EQ:
             case TOK_GTE:
@@ -460,7 +468,7 @@ int tokenize(const char* source) {
         }
 
         // 5. Increment basic token index
-        ts_new_index(BASIC);
+        ts_new_index();
 next_character:
         advance();
         column++;
@@ -490,18 +498,61 @@ static char* getFileSourcePointer(const char* path) {
     return buffer;
 }
 
-static void printTokens(){
-    for (int i = 0; i < SrcTokenStream.tokenIndex; i++) {
-        printf("<line: %d, col: %d, token: %s", tokens[i].line, tokens[i].col, TokenStrings[tokens[i].type]);
+// Function to print tokens in color
 
-        if (tokens[i].type >= TOK_IDENTIFIER && tokens[i].type <= TOK_INTEGER_LITERAL) {
-            if (tokens[i].type == TOK_INTEGER_LITERAL)
-                printf(", data: %d", (*(int*)(tokens[i].data)));
-            else
-                printf(", data: %s", ((char*)tokens[i].data));
-        }
-        printf(">\n");
-    }
+void printColoredToken(int tokenType, const char* tokenString, void* tokenData) {
+   printf("❬ ");
+   switch (tokenType) {
+       case TOK_IDENTIFIER:
+           printf(COLOR_BRIGHT_GREEN "ID→ %s" COLOR_RESET, tokenString);
+           if (tokenData) printf(COLOR_CYAN " 「%s 」" COLOR_RESET, (char*)tokenData);
+           break;
+       case TOK_INTEGER_LITERAL:
+           printf(COLOR_BRIGHT_YELLOW "INT→ %s" COLOR_RESET, tokenString);
+           if (tokenData) printf(COLOR_CYAN " 「%d 」" COLOR_RESET, *(int*)tokenData);
+           break;
+       default:
+           if (tokenType < __TOK__DIVIDER__OPERATORS__)
+               printf(COLOR_BRIGHT_BLUE "KW→ %s" COLOR_RESET, tokenString);
+           else
+               printf(COLOR_BRIGHT_MAGENTA "OP→ %s" COLOR_RESET, tokenString);
+   }
+   printf("❭");
+}
+
+static int getDigits(int num) {
+   if (num == 0) return 1;
+   return (int)log10(abs(num)) + 1;
+}
+
+void printTokens() {
+   FILE* file = flexerCfg.verbose_mode ? fopen("tokens_output.txt", "w") : NULL;
+
+   // Calculate max widths
+   int maxLine = 0, maxCol = 0, maxIndex = getDigits(SrcTokenStream.tokenIndex);
+   for (int i = 0; i < SrcTokenStream.tokenIndex; i++) {
+       int lineDigits = getDigits(tokens[i].line);
+       int colDigits = getDigits(tokens[i].col);
+       maxLine = lineDigits > maxLine ? lineDigits : maxLine;
+       maxCol = colDigits > maxCol ? colDigits : maxCol;
+   }
+
+   for (int i = 0; i < SrcTokenStream.tokenIndex; i++) {
+       if (flexerCfg.verbose_mode) {
+           printf("│ %*d:%*d ", maxLine, tokens[i].line, maxCol, tokens[i].col);
+           printColoredToken(tokens[i].type, TokenStrings[tokens[i].type], tokens[i].data);
+           printf(" %*d", maxIndex, i);
+       } else {
+           if (tokens[i].type < __TOK__DIVIDER__OPERATORS__)
+               printf("📑 ");
+           printColoredToken(tokens[i].type, TokenStrings[tokens[i].type], tokens[i].data);
+           printf(" №%*d", maxIndex, i);
+       }
+       printf("\n");
+       if (file) fprintf(file, "\n");
+   }
+
+   if (file) fclose(file);
 }
 
 void ht_print(ht* table) {
@@ -515,101 +566,65 @@ void ht_print(ht* table) {
     }
 }
 
-void printASTNode(ASTNode* node, int depth) {
-    // Print indentation
-    for (int i = 0; i < depth; i++) {
-        printf("  ");
-    }
-    
-    // Print node type
-    printf("Node Type: ");
-    switch (node->type) {
-        case NODE_PROGRAM:        printf("PROGRAM"); break;
-        case NODE_FUNCTION:       printf("FUNCTION"); break;
-        case NODE_VARIABLE_DECL:  printf("VARIABLE_DECL"); break;
-        case NODE_PARAMETER:      printf("PARAMETER"); break;
-        case NODE_BLOCK:         printf("BLOCK"); break;
-        case NODE_RETURN:        printf("RETURN"); break;
-        case NODE_IF:            printf("IF"); break;
-        case NODE_WHILE:         printf("WHILE"); break;
-        case NODE_EXPRESSION:    printf("EXPRESSION"); break;
-        case NODE_BINARY_OP:     printf("BINARY_OP"); break;
-        case NODE_UNARY_OP:      printf("UNARY_OP"); break;
-        case NODE_LITERAL:       printf("LITERAL"); break;
-        case NODE_IDENTIFIER:    printf("IDENTIFIER"); break;
-        case NODE_CALL:         printf("CALL"); break;
-        default:                printf("UNKNOWN"); break;
-    }
-    
-    // Print token information if present
-    if (node->token.data) {
-        printf(" | Token: %s", node->token.data);
-    }
-    
-    // Print value if present
-    if (node->value) {
-        printf(" | Value: %s", node->value);
-    }
-    
-    printf("\n");
-    
-    // Print children recursively
-    for (size_t i = 0; i < node->childCount; i++) {
-        printASTNode(&node->children[i], depth + 1);
-    }
-    
-    // Print next node in list if present
-    if (node->next) {
-        printASTNode(node->next, depth);
-    }
-}
+extern void printAST(ASTNode*);
 
-// Wrapper function to start printing from root
-void printAST(ASTNode* root) {
-    if (!root) {
-        printf("Empty AST\n");
-        return;
-    }
-    
-    printf("Abstract Syntax Tree:\n");
-    printASTNode(root, 0);
-}
+//* TODO: Add support for INCLUDES
+//* TODO: Add support so file path doesn't have to be the first argument
+//* TODO: Fix column not being accurate for some tokens like literals
+//* TODO: Make sure negative numbers are working
+//* TODO: Add support for ampersand in parser
 
-
-extern bool hashPreprocessorDirectives(ht*);
-extern bool preProcessorMacroExpansion(ht*);
-static ht* preProcessHt;
-Config flexerCfg;
-
-// [0] path to file
 int main(int argc, char** agrv) {
 
-    printf("Lexing stage, Argc: %d:\n", argc);
-    for(int i = 1; i < argc; i++) {
-        if (strcmp(agrv[i], "--no-preprocess"))
-            flexerCfg.no_preprocess = true;
+    //! Temporary setup
+    flexerCfg.debug_mode = true;
+    flexerCfg.verbose_mode = true;
+    flexerCfg.no_preprocess = true;
+    flexerCfg.dump_tokens = true;
+    flexerCfg.dump_ast = true;
 
-        printf("\t%s\n", agrv[i]);
-    }
-
+    TokenType keyToks[] = {
+        TOK_AUTO, TOK_BREAK, TOK_CASE, TOK_CHAR, TOK_CONST, TOK_CONTINUE, TOK_DEFAULT, TOK_DO,
+        TOK_DOUBLE, TOK_ELSE, TOK_ENUM, TOK_EXTERN, TOK_FLOAT, TOK_FOR, TOK_GOTO, TOK_IF,
+        TOK_INLINE, TOK_INT, TOK_LONG, TOK_REGISTER, TOK_RETURN, TOK_SHORT, TOK_SIGNED, TOK_SIZEOF,
+        TOK_STATIC, TOK_STRUCT, TOK_SWITCH, TOK_TYPEDEF, TOK_UNION, TOK_UNSIGNED, TOK_VOID, TOK_VOLATILE, TOK_WHILE,
+        TOK_DEFINE, TOK_INCLUDE, TOK_IFDEF, TOK_ELIF, TOK_ENDIF
+    };
 
     if (argc <= 1) 
         EXIT_FAIL_MSG("PROVIDE FILE PATH...");
+    
+    for(int i = 1; i < argc; i++) {
+        if (strcmp(agrv[i], "--no-preprocess") == 0)
+            flexerCfg.no_preprocess = true;
+        else if(strcmp(agrv[i], "--dump-tokens") == 0)
+            flexerCfg.dump_tokens = true;
+        else if(strcmp(agrv[i], "--verbose") == 0)
+            flexerCfg.verbose_mode = true;
+        else if(strcmp(agrv[i], "--debug") == 0)
+            flexerCfg.debug_mode = true;
+        else if(strcmp(agrv[i], "--dump-ast") == 0)
+            flexerCfg.dump_ast = true;
+    }
+
+    if (flexerCfg.verbose_mode) {
+        printf("Arguments/Flags:\n");
+        for(int i = 1; i < argc; i++) {
+            printf("-->\t%s\n", agrv[i]);
+        }
+    }
+
+    if (flexerCfg.verbose_mode)
+        printf("Lexing...\n");
+
 
     // get pointer to file data 
     const char* source = getFileSourcePointer(agrv[1]);
 
     // Setup keyword hash table
     keywordTokenConverter = ht_create((int)__TOK__DIVIDER__OPERATORS__);
-    for(int i = 0; i < __TOK__DIVIDER__OPERATORS__; i++) {
-        void* tokdata = malloc(sizeof(TokenType));
-        if (tokdata == NULL) {
-            printf("No memory...\n");
-            exit(EXIT_FAILURE);
-        }
-        *(TokenType*)tokdata = (TokenType)i;
-        ht_set(keywordTokenConverter, TokenStrings[i], tokdata);
-    }
+    for(int i = 0; i < __TOK__DIVIDER__OPERATORS__; i++)
+        ht_set(keywordTokenConverter, TokenStrings[i], (void*)&keyToks[i]);
 
     // setup token stream
     SrcTokenStream.tokenCapacity = TOKEN_STREAM_INITAL_CAPACITY;
@@ -628,6 +643,15 @@ int main(int argc, char** agrv) {
     if (preProcessHt == NULL)
         EXIT_FAIL_MSG("NO MEMORY...");
 
+    if (flexerCfg.dump_tokens) {
+        if (flexerCfg.verbose_mode) {
+            printTokens();
+        } else
+            printTokens();
+    
+        printf("\n-------------------\n\n");
+    }
+
      if (!hashPreprocessorDirectives(preProcessHt))
          EXIT_FAIL_MSG("PREPROCESS ERROR...");
 
@@ -636,10 +660,19 @@ int main(int argc, char** agrv) {
 
     printTokens();
 
-    printf("Parsing...\n");
+    if (flexerCfg.verbose_mode)
+        printf("Parsing...\n");
 
-    printAST(parse(SrcTokenStream.Tokens));
+    ASTNode* ast = parse(SrcTokenStream.Tokens);
 
-    printf("File path: %s\n", agrv[1]);
+    if (flexerCfg.dump_ast)
+        printAST(ast);
+
+    //* TODO: Type checking
+
+    //* TODO: Code generation / Evaluation / VM
+
+    //* TODO: Free structures
+
     return 0;
 }

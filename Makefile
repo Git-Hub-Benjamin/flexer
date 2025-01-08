@@ -33,13 +33,12 @@ endif
 # Directory structure
 BUILD_DIR = build
 SRC_DIR = flexer
-HASH_DIR = hash
 PREPROCESS_DIR = $(SRC_DIR)/preprocess
 
 # Source files
-C_SRCS = $(SRC_DIR)/flexer.c \
-         $(HASH_DIR)/hash.c \
-         $(SRC_DIR)/fparse.c \
+C_SRCS = $(SRC_DIR)/lexer/flexer.c \
+         $(SRC_DIR)/hash/hash.c \
+         $(SRC_DIR)/parser/fparse.c \
 
 ASM_SRCS = $(PREPROCESS_DIR)/hashPreprocessorDirectives.asm \
            $(PREPROCESS_DIR)/preProcessorMacroExpansion.asm
@@ -52,21 +51,23 @@ ASM_OBJS = $(patsubst %.asm,$(BUILD_DIR)/%$(OBJ_EXT),$(notdir $(ASM_SRCS)))
 TARGET = flexer$(EXE_EXT)
     
 # Build rules
-all: $(TARGET)
+all: clean $(TARGET)
 
 $(TARGET): $(C_OBJS) $(ASM_OBJS)
 	$(LINKER) $^ -o $@ $(EXTRA_LIBS)
 
-# Pattern rule for C files
-$(BUILD_DIR)/%$(OBJ_EXT): $(SRC_DIR)/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/%$(OBJ_EXT): $(HASH_DIR)/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# Pattern rule for ASM files
 $(BUILD_DIR)/%$(OBJ_EXT): $(PREPROCESS_DIR)/%.asm
+	mkdir -p $(BUILD_DIR)
 	nasm $(NASM_FLAGS) $< -o $@
+
+$(BUILD_DIR)/%$(OBJ_EXT): $(SRC_DIR)/lexer/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%$(OBJ_EXT): $(SRC_DIR)/hash/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%$(OBJ_EXT): $(SRC_DIR)/parser/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 ifeq ($(OS),Windows_NT)
