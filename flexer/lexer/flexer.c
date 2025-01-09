@@ -591,6 +591,8 @@ int main(int argc, char** agrv) {
         TOK_DEFINE, TOK_INCLUDE, TOK_IFDEF, TOK_ELIF, TOK_ENDIF
     };
 
+    /*
+
     if (argc <= 1) 
         EXIT_FAIL_MSG("PROVIDE FILE PATH...");
     
@@ -613,13 +615,14 @@ int main(int argc, char** agrv) {
             printf("-->\t%s\n", agrv[i]);
         }
     }
+    */
 
     if (flexerCfg.verbose_mode)
         printf("Lexing...\n");
 
 
     // get pointer to file data 
-    const char* source = getFileSourcePointer(agrv[1]);
+    const char* source = getFileSourcePointer("main.scrm"); //agrv[1]
 
     // Setup keyword hash table
     keywordTokenConverter = ht_create((int)__TOK__DIVIDER__OPERATORS__);

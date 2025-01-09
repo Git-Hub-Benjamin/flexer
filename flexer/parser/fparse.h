@@ -19,6 +19,7 @@ typedef enum {
     NODE_BINARY_OP,
     NODE_UNARY_OP,
     NODE_LITERAL,
+    NODE_LITERAL_INT,
     NODE_IDENTIFIER,
     NODE_CALL,
     NODE_ADDR_OF
@@ -34,10 +35,13 @@ typedef struct ASTNode {
     struct ASTNode* next;
 } ASTNode;
 
-typedef struct FunctionType {
+typedef struct DeclarationType {
     int pointerDepth;
-    TokenType returnType;
-} FunctionType;
+    union {
+        TokenType returnType;
+        TokenType variableType;
+    };
+} DeclarationType;
 
 // Public interface
 ASTNode* parse(Token* tokens);

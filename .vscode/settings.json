@@ -48,6 +48,7 @@
         "errno.h": "c",
         "fparse.h": "c",
         "iosfwd": "c",
-        "terminal-colors.h": "c"
+        "terminal-colors.h": "c",
+        "stdio.h": "c"
     }
 }

@@ -160,26 +160,17 @@ static ASTNode* parseDeclaration(void) {
         decl = parseVariableDeclaration(typeToken, *id);
     }
     
-    // Store return type in value field
+    // Store return & ptr depth type in value field
 
-    if (decl->type == NODE_FUNCTION) {
-        FunctionType* funcType = (FunctionType*)malloc(sizeof(FunctionType));
-        funcType->pointerDepth = pointerDepth;
-        funcType->returnType = typeToken.type;
-        decl->value = funcType;
-    }
+    DeclarationType* declType = (DeclarationType*)malloc(sizeof(DeclarationType));
+    declType->pointerDepth = pointerDepth;
 
-    // Store pointer depth in value field
+    if (decl->type == NODE_FUNCTION)
+        declType->returnType = typeToken.type;
+    else
+        declType->variableType = typeToken.type;
 
-    if (pointerDepth > 0) {
-        if (decl->type == NODE_FUNCTION) {
-            ((FunctionType*)decl->value)->pointerDepth = pointerDepth;
-        } else {
-            char* depth = malloc(8);
-            snprintf(depth, 8, "%d", pointerDepth);
-            decl->value = depth;
-        }
-    }
+    decl->value = declType;
     
     return decl;
 }
@@ -423,7 +414,7 @@ static ASTNode* parsePrimary(void) {
     switch (token->type) {
         case TOK_INTEGER_LITERAL: {
             advance();
-            ASTNode* node = createNode(NODE_LITERAL);
+            ASTNode* node = createNode(NODE_LITERAL_INT);
             node->token = *token;
             return node;
         }
@@ -552,6 +543,23 @@ static ASTNode* parseExpression(void) {
     return parseBinaryRHS(1, left);
 }
 
+const wchar_t* NODE_SYMBOLS[] = {
+    L"📦",  // PROGRAM
+    L"🔧",  // FUNCTION
+    L"📝",  // VARIABLE
+    L"⚙️",   // PARAMETER
+    L"🔲",  // BLOCK
+    L"↩️",   // RETURN
+    L"🔀",  // IF
+    L"🔄",  // WHILE
+    L"🎯",  // EXPRESSION
+    L"➗",  // BINARY_OP
+    L"✨",  // UNARY_OP
+    L"💎",  // LITERAL
+    L"🏷️",   // IDENTIFIER
+    L"📞"   // CALL
+};
+
 void printASTNode(ASTNode* node, int depth) {
     for (int i = 0; i < depth; i++) {
         printf("│   ");
@@ -559,35 +567,53 @@ void printASTNode(ASTNode* node, int depth) {
 
     printf("├── " COLOR_YELLOW "Node: " COLOR_RESET);
     switch (node->type) {
-        case NODE_PROGRAM:        printf(COLOR_BRIGHT_GREEN "【Program】" COLOR_RESET); break;
-        case NODE_FUNCTION:       printf(COLOR_BRIGHT_BLUE "【Function】" COLOR_RESET); break;
-        case NODE_VARIABLE_DECL:  printf(COLOR_BRIGHT_CYAN "【Variable】" COLOR_RESET); break;
-        case NODE_PARAMETER:      printf(COLOR_BRIGHT_MAGENTA "【Parameter】" COLOR_RESET); break;
-        case NODE_BLOCK:          printf(COLOR_BRIGHT_YELLOW "【Block】" COLOR_RESET); break;
-        case NODE_RETURN:         printf(COLOR_BRIGHT_RED "【Return】" COLOR_RESET); break;
-        case NODE_IF:             printf(COLOR_BRIGHT_BLUE "【If】" COLOR_RESET); break;
-        case NODE_WHILE:          printf(COLOR_BRIGHT_MAGENTA "【While】" COLOR_RESET); break;
-        case NODE_EXPRESSION:     printf(COLOR_BRIGHT_GREEN "【Expression】" COLOR_RESET); break;
-        case NODE_BINARY_OP:      printf(COLOR_BRIGHT_YELLOW "【Binary Op】" COLOR_RESET); break;
-        case NODE_UNARY_OP:       printf(COLOR_BRIGHT_CYAN "【Unary Op】" COLOR_RESET); break;
-        case NODE_LITERAL:        printf(COLOR_BRIGHT_WHITE "【Literal】" COLOR_RESET); break;
-        case NODE_IDENTIFIER:     printf(COLOR_BRIGHT_GREEN "【Identifier】" COLOR_RESET); break;
-        case NODE_CALL:           printf(COLOR_BRIGHT_BLUE "【Call】" COLOR_RESET); break;
-        default:                  printf(COLOR_BRIGHT_RED "【Unknown】" COLOR_RESET); break;
+        case NODE_PROGRAM:        printf(COLOR_BRIGHT_GREEN "【Program 】" COLOR_RESET); break;
+        case NODE_FUNCTION:       printf(COLOR_BRIGHT_BLUE "【Function 】" COLOR_RESET); break;
+        case NODE_VARIABLE_DECL:  printf(COLOR_BRIGHT_CYAN "【Variable 】" COLOR_RESET); break;
+        case NODE_PARAMETER:      printf(COLOR_BRIGHT_MAGENTA "【Parameter 】" COLOR_RESET); break;
+        case NODE_BLOCK:          printf(COLOR_BRIGHT_YELLOW "【Block 】" COLOR_RESET); break;
+        case NODE_RETURN:         printf(COLOR_BRIGHT_RED "【Return 】" COLOR_RESET); break;
+        case NODE_IF:             printf(COLOR_BRIGHT_BLUE "【If 】" COLOR_RESET); break;
+        case NODE_WHILE:          printf(COLOR_BRIGHT_MAGENTA "【While 】" COLOR_RESET); break;
+        case NODE_EXPRESSION:     printf(COLOR_BRIGHT_GREEN "【Expression 】" COLOR_RESET); break;
+        case NODE_BINARY_OP:      printf(COLOR_BRIGHT_YELLOW "【Binary Op 】" COLOR_RESET); break;
+        case NODE_UNARY_OP:       printf(COLOR_BRIGHT_CYAN "【Unary Op 】" COLOR_RESET); break;
+        case NODE_LITERAL:        printf(COLOR_BRIGHT_WHITE "【Literal 】" COLOR_RESET); break;
+        case NODE_LITERAL_INT:        printf(COLOR_BRIGHT_WHITE "【Immediate 】" COLOR_RESET); break;
+        case NODE_IDENTIFIER:     printf(COLOR_BRIGHT_GREEN "【Identifier 】" COLOR_RESET); break;
+        case NODE_CALL:           printf(COLOR_BRIGHT_BLUE "【Call 】" COLOR_RESET); break;
+        default:                  printf(COLOR_BRIGHT_RED "【Unknown  】" COLOR_RESET); break;
     }
 
-    if (node->token.data)
-        printf(COLOR_CYAN " ➜ %s" COLOR_RESET, node->token.data);
+    if (node->token.data) {
+        if (node->type == NODE_LITERAL_INT)
+            printf(COLOR_CYAN " ➜ %d" COLOR_RESET, *(int*)node->token.data);
+        else
+            printf(COLOR_CYAN " ➜ %s" COLOR_RESET, node->token.data);
+    }
 
     if (node->value) {
-        if (node->type == NODE_VARIABLE_DECL)
-            printf(COLOR_MAGENTA " 📍 ptr[%s]" COLOR_RESET, (char*)node->value);
-        else if (node->type == NODE_FUNCTION)
-            printf(COLOR_MAGENTA " 📍 ptr[%d] ret[%s]" COLOR_RESET, 
-                ((FunctionType*)node->value)->pointerDepth,
-                TokenStrings[((FunctionType*)node->value)->returnType]);
-        else
-            printf(COLOR_MAGENTA " 📍 %s" COLOR_RESET, (char*)node->value);
+        DeclarationType* decl = (DeclarationType*)node->value;
+        if (node->type == NODE_VARIABLE_DECL || node->type == NODE_FUNCTION) {
+            if (decl->pointerDepth > 0) {
+                printf(COLOR_MAGENTA " 📍%d" COLOR_RESET, decl->pointerDepth);
+                if (node->type == NODE_FUNCTION) {
+                    printf(COLOR_MAGENTA " 🔧%s" COLOR_RESET, TokenStrings[decl->returnType]);
+                } else {
+                    printf(COLOR_MAGENTA " 📝%s" COLOR_RESET,
+                        TokenStrings[decl->variableType]); 
+                }
+            } else {
+                printf(COLOR_MAGENTA " 📝%s" COLOR_RESET,
+                    TokenStrings[decl->variableType]); 
+            }
+        } else {
+            printf(COLOR_MAGENTA " 💎%s" COLOR_RESET, (char*)node->value);
+        }
+    }
+
+    if (node->type == NODE_BINARY_OP) {
+        printf(COLOR_BRIGHT_YELLOW " ➜ %s" COLOR_RESET, TokenStrings[node->token.type]);
     }
 
     printf("\n");
@@ -611,3 +637,4 @@ void printAST(ASTNode* root) {
     printf("Abstract Syntax Tree:\n");
     printASTNode(root, 0);
 }
+
