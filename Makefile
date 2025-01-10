@@ -15,9 +15,9 @@ ifeq ($(OS),Windows_NT)
         CC = clang 
         NASM_FLAGS = -g -f win64 -i ./flexer/preprocess/ -F cv8
         OBJ_EXT = .obj
-        LINKER = clang -m64 -g -gcodeview -fuse-ld=lld
+        LINKER = clang -m64 -g -fuse-ld=lld
         EXE_EXT = .exe
-        CFLAGS = -g -gcodeview -Z7 -D_CRT_SECURE_NO_WARNINGS
+        CFLAGS = -g -D_CRT_SECURE_NO_WARNINGS
     endif
 else
     # Linux

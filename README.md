@@ -11,7 +11,7 @@ A custom lexer and preprocessor written in C++ that handles tokenization and pre
 - Source location tracking
 - Error reporting with line/column information
 
-## Build (Compiles on Linux only)
+## Build (Compiles on Linux only, as of now... Working on making it Windows compatible but Windows Assembly is weird)
 1. mkdir build
 2. make
 3. cd build
