@@ -582,6 +582,7 @@ void printASTNode(ASTNode* node, int depth) {
         case NODE_LITERAL_INT:        printf(COLOR_BRIGHT_WHITE "【Immediate 】" COLOR_RESET); break;
         case NODE_IDENTIFIER:     printf(COLOR_BRIGHT_GREEN "【Identifier 】" COLOR_RESET); break;
         case NODE_CALL:           printf(COLOR_BRIGHT_BLUE "【Call 】" COLOR_RESET); break;
+        case NODE_ADDR_OF:        printf(COLOR_BRIGHT_MAGENTA "【Address Of 】" COLOR_RESET); break;
         default:                  printf(COLOR_BRIGHT_RED "【Unknown  】" COLOR_RESET); break;
     }
 

@@ -3,5 +3,9 @@
 
 int main() {
   int x = BENJAMIN;
-  return 0;
+  int* y = &x;
+  return BENJAMIN * (*y * 10);
+
+  return 10;
+  return BENJAMIN;
 }

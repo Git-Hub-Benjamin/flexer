@@ -33,11 +33,13 @@ void traverseReturnStatement(ASTNode* node) {
     for(size_t i = 0; i < node->childCount; i++) {
         ASTNode* child = node->children[i];
 
-        if (!matchType(currentType)) {
-            currentType = child->token.type;
-        } else if (child->type == NODE_LITERAL_INT) {
-            currentType = TOK_INT;
-        }
+        
+
+    }
+
+    if (!matchType(returnType, currentType)) {
+        printf("Return type does not match function return type\n");
+        checker.errors++;
     }
 
     
